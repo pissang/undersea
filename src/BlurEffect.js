@@ -5,8 +5,12 @@ qtek.Shader.import(require('raw!./blur.glsl'));
 
 
 function CausticsEffect() {
-    this._passH = new PostProcessPass(qtek.Shader.source('undersea.blur_h'), true);
-    this._passV = new PostProcessPass(qtek.Shader.source('undersea.blur_v'));
+    this._passH = new PostProcessPass(qtek.Shader.source('undersea.blur_h'), {
+        type: qtek.Texture.HALF_FLOAT
+    });
+    this._passV = new PostProcessPass(qtek.Shader.source('undersea.blur_v'), {
+        type: qtek.Texture.HALF_FLOAT
+    });
 
     this._passV.setUniform('texture', this._passH.getTargetTexture());
 }
@@ -17,6 +21,11 @@ CausticsEffect.prototype = {
 
     setParameter: function (name, value) {
         this._passV.setUniform(name, value);
+        this._passH.setUniform(name, value);
+    },
+
+    getTargetTexture: function () {
+        return this._passV.getTargetTexture();
     },
 
     render: function (forwardRenderer, deferredRenderer, camera, colorTexture) {

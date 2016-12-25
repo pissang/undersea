@@ -3,7 +3,9 @@ var fogShaderCode = require('raw!./fog.glsl');
 var PostProcessPass = require('./PostProcessPass');
 
 function CausticsEffect() {
-    this._pass = new PostProcessPass(fogShaderCode, true);
+    this._pass = new PostProcessPass(fogShaderCode, {
+        type: qtek.Texture.HALF_FLOAT
+    });
 }
 
 CausticsEffect.prototype = {

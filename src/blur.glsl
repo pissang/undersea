@@ -18,8 +18,8 @@ vec4 doBlur(vec2 offset) {
 
     offset *= clamp(smoothstep(blurNear, blurFar, distance), 0.0, 1.0);
     // blur in y (vertical)
-    for (int i = 0; i < 13; i++) {
-        vec2 coord = clamp(v_Texcoord + float(i - 6) * offset, vec2(0.0), vec2(1.0));
+    for (int i = 0; i < 9; i++) {
+        vec2 coord = clamp(v_Texcoord + float(i - 4) * offset, vec2(0.0), vec2(1.0));
         float w = gaussianKernel[i];
         sum += decodeHDR(texture2D(texture, coord)) * w;
         weightAll += w;

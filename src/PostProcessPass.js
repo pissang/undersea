@@ -1,13 +1,12 @@
 var qtek = require('qtek');
 
-function PostProcessPass(shader, renderToTarget, clearColor) {
+function PostProcessPass(shader, renderToTarget) {
     this._pass = new qtek.compositor.Pass({
-        fragment: shader,
-        clearColor: clearColor
+        fragment: shader
     });
     if (renderToTarget) {
         this._frameBuffer = new qtek.FrameBuffer();
-        this._targetTexture = new qtek.Texture2D();
+        this._targetTexture = new qtek.Texture2D(renderToTarget);
     }
 }
 PostProcessPass.prototype.setUniform = function (key, val) {
