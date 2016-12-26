@@ -4,11 +4,12 @@ var FogEffect = require('./FogEffect');
 var BlurEffect = require('./BlurEffect');
 var PostProcessPass = require('./PostProcessPass');
 var Fishes = require('./Fishes');
+var Terrain = require('./Terrain');
 
 var root = document.getElementById('root');
 
 var renderer = new qtek.Renderer({
-    devicePixelRatio: 1
+    // devicePixelRatio: 1
 });
 root.appendChild(renderer.canvas);
 
@@ -17,7 +18,7 @@ var causticsEffect = new CausticsEffect();
 var fogEffect = new FogEffect();
 var blurEffect = new BlurEffect();
 
-var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'), true);
+var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'));
 tonemappingPass.getShader().disableTexturesAll();
 tonemappingPass.getShader().enableTexture('texture');
 tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
@@ -37,37 +38,13 @@ var control = new qtek.plugin.OrbitControl({
     domElement: renderer.canvas
 });
 
-// Seabed
-var sandTexture = new qtek.Texture2D({
-    anisotropic: 32,
-    wrapS: qtek.Texture.REPEAT,
-    wrapT: qtek.Texture.REPEAT
-});
-var sandNormalTexture = new qtek.Texture2D({
-    anisotropic: 32,
-    wrapS: qtek.Texture.REPEAT,
-    wrapT: qtek.Texture.REPEAT
-});
-sandTexture.load('asset/texture/sand.jpg');
-sandNormalTexture.load('asset/texture/sand_NRM.png');
-var plane = new qtek.Mesh({
-    geometry: new qtek.geometry.Plane({
-        widthSegements: 100,
-        heightSegments: 100
-    }),
-    culling: false,
-    material: new qtek.StandardMaterial({
-        diffuseMap: sandTexture,
-        normalMap: sandNormalTexture,
-        uvRepeat: [20, 20],
-        linear: true
-    })
-});
-// Don't foget to generate tangents
-plane.geometry.generateTangents();
-plane.scale.set(1000, 1000, 1);
+var terrain = new Terrain();
+var plane = terrain.getRootNode();
 plane.rotation.rotateX(-Math.PI / 2);
-scene.add(plane);
+
+setTimeout(function () {
+    scene.add(plane);
+}, 2000);
 
 var fishes = new Fishes();
 scene.add(fishes.getRootNode());
@@ -76,7 +53,7 @@ camera.position.set(0, 60, 80);
 camera.lookAt(new qtek.math.Vector3(0, 30, 0));
 
 var causticsLight = causticsEffect.getLight();
-causticsLight.intensity = 2;
+causticsLight.intensity = 1;
 causticsLight.position.set(0, 10, 1);
 causticsLight.lookAt(scene.position);
 
@@ -88,10 +65,10 @@ animation.on('frame', function (frameTime) {
     // renderer.render(scene, camera);
     deferredRenderer.render(renderer, scene, camera, true);
     fogEffect.render(renderer, deferredRenderer, camera, deferredRenderer.getTargetTexture());
-    // blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
+    blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
 
     tonemappingPass.render(renderer);
-    fxaaPass.render(renderer);
+    // fxaaPass.render(renderer);
 });
 deferredRenderer.on('lightaccumulate', function () {
     causticsEffect.render(renderer, deferredRenderer, camera);
@@ -107,13 +84,13 @@ resize();
 window.addEventListener('resize', resize);
 
 var config = {
-    causticsIntensity: 2,
+    causticsIntensity: 3,
     causticsScale: 1.7,
 
     fogDensity: 0.2,
     fogColor: [36,95,85],
     sceneColor: [144,190,200],
-    ambientIntensity: 0.15,
+    ambientIntensity: 0.8,
 
     blurNear: 40,
     blurFar: 150

@@ -50,11 +50,12 @@
 	var BlurEffect = __webpack_require__(160);
 	var PostProcessPass = __webpack_require__(159);
 	var Fishes = __webpack_require__(162);
+	var Terrain = __webpack_require__(165);
 
 	var root = document.getElementById('root');
 
 	var renderer = new qtek.Renderer({
-	    devicePixelRatio: 1
+	    // devicePixelRatio: 1
 	});
 	root.appendChild(renderer.canvas);
 
@@ -63,7 +64,7 @@
 	var fogEffect = new FogEffect();
 	var blurEffect = new BlurEffect();
 
-	var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'), true);
+	var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'));
 	tonemappingPass.getShader().disableTexturesAll();
 	tonemappingPass.getShader().enableTexture('texture');
 	tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
@@ -83,37 +84,13 @@
 	    domElement: renderer.canvas
 	});
 
-	// Seabed
-	var sandTexture = new qtek.Texture2D({
-	    anisotropic: 32,
-	    wrapS: qtek.Texture.REPEAT,
-	    wrapT: qtek.Texture.REPEAT
-	});
-	var sandNormalTexture = new qtek.Texture2D({
-	    anisotropic: 32,
-	    wrapS: qtek.Texture.REPEAT,
-	    wrapT: qtek.Texture.REPEAT
-	});
-	sandTexture.load('asset/texture/sand.jpg');
-	sandNormalTexture.load('asset/texture/sand_NRM.png');
-	var plane = new qtek.Mesh({
-	    geometry: new qtek.geometry.Plane({
-	        widthSegements: 100,
-	        heightSegments: 100
-	    }),
-	    culling: false,
-	    material: new qtek.StandardMaterial({
-	        diffuseMap: sandTexture,
-	        normalMap: sandNormalTexture,
-	        uvRepeat: [20, 20],
-	        linear: true
-	    })
-	});
-	// Don't foget to generate tangents
-	plane.geometry.generateTangents();
-	plane.scale.set(1000, 1000, 1);
+	var terrain = new Terrain();
+	var plane = terrain.getRootNode();
 	plane.rotation.rotateX(-Math.PI / 2);
-	scene.add(plane);
+
+	setTimeout(function () {
+	    scene.add(plane);
+	}, 2000);
 
 	var fishes = new Fishes();
 	scene.add(fishes.getRootNode());
@@ -122,7 +99,7 @@
 	camera.lookAt(new qtek.math.Vector3(0, 30, 0));
 
 	var causticsLight = causticsEffect.getLight();
-	causticsLight.intensity = 2;
+	causticsLight.intensity = 1;
 	causticsLight.position.set(0, 10, 1);
 	causticsLight.lookAt(scene.position);
 
@@ -134,10 +111,10 @@
 	    // renderer.render(scene, camera);
 	    deferredRenderer.render(renderer, scene, camera, true);
 	    fogEffect.render(renderer, deferredRenderer, camera, deferredRenderer.getTargetTexture());
-	    // blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
+	    blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
 
 	    tonemappingPass.render(renderer);
-	    fxaaPass.render(renderer);
+	    // fxaaPass.render(renderer);
 	});
 	deferredRenderer.on('lightaccumulate', function () {
 	    causticsEffect.render(renderer, deferredRenderer, camera);
@@ -153,13 +130,13 @@
 	window.addEventListener('resize', resize);
 
 	var config = {
-	    causticsIntensity: 2,
+	    causticsIntensity: 3,
 	    causticsScale: 1.7,
 
 	    fogDensity: 0.2,
 	    fogColor: [36,95,85],
 	    sceneColor: [144,190,200],
-	    ambientIntensity: 0.15,
+	    ambientIntensity: 0.8,
 
 	    blurNear: 40,
 	    blurFar: 150
@@ -22269,7 +22246,7 @@
 	                if (node.material) {
 	                    materials[node.material.__GUID__] = node.material;
 	                }
-	                // Particle system need to dispose
+	                // Particle system and AmbientCubemap light need to dispose
 	                if (node.dispose) {
 	                    node.dispose(_gl);
 	                }
@@ -24011,9 +23988,93 @@
 
 /***/ },
 /* 87 */
-/***/ function(module, exports) {
+/***/ function(module, exports, __webpack_require__) {
 
-	// https://docs.unrealengine.com/latest/INT/Engine/Rendering/LightingAndShadows/AmbientCubemap/
+	'use strict';
+	// https://docs.unrealengine.com/latest/INT/Engine/Rendering/LightingAndShadows/AmbientCubemap/define(function(require) {
+
+
+	    var Light = __webpack_require__(85);
+	    var cubemapUtil = __webpack_require__(144);
+
+	    /**
+	     * @constructor qtek.light.AmbientCubemap
+	     * @extends qtek.Light
+	     */
+	    var AmbientCubemapLight = Light.extend({
+
+	        /**
+	         * @type {qtek.TextureCube}
+	         */
+	        cubemap: null,
+
+	        /**
+	         * @type {number}
+	         */
+	        range: 100,
+
+	        castShadow: false,
+
+	        _normalDistribution: null,
+	        _brdfLookup: null
+
+	    }, {
+
+	        type: 'AMBIENT_CUBEMAP_LIGHT',
+
+	        prefilter: function (renderer) {
+	            if (!this._brdfLookup) {
+	                this._normalDistribution = cubemapUtil.generateNormalDistribution();
+	                this._brdfLookup = cubemapUtil.integrateBRDF(renderer, this._normalDistribution);
+	            }
+	            var cubemap = this.cubemap;
+	            if (cubemap.__prefiltered) {
+	                return;
+	            }
+
+	            var result = cubemap.prefilterEnvironmentMap(
+	                renderer, cubemap, this._normalDistribution, this._brdfLookup
+	            );
+	            this.cubemap = result.environmentMap;
+	            this.cubemap.__prefiltered = true;
+
+	            cubemap.dispose(renderer.gl);
+	        },
+
+	        uniformTemplates: {
+	            ambientCubemapLightColor: {
+	                type: '3f',
+	                value: function (instance) {
+	                    var color = instance.color;
+	                    var intensity = instance.intensity;
+	                    return [color[0]*intensity, color[1]*intensity, color[2]*intensity];
+	                }
+	            },
+
+	            ambientCubemapLightCubemap: {
+	                type: 't',
+	                value: function (instance) {
+	                    return instance.cubemap;
+	                }
+	            },
+
+	            ambientCubemapLightBRDFLookup: {
+	                type: 't',
+	                value: function (instance) {
+	                    return instance._brdfLookup;
+	                }
+	            }
+	        }
+	        /**
+	         * @method
+	         * @name clone
+	         * @return {qtek.light.AmbientCubemap}
+	         * @memberOf qtek.light.AmbientCubemap.prototype
+	         */
+	    });
+
+	    module.exports = AmbientCubemapLight;
+
 
 /***/ },
 /* 88 */
@@ -34362,7 +34423,7 @@
 /* 156 */
 /***/ function(module, exports) {
 
-	module.exports = "\n@import qtek.deferred.chunk.light_head\n\n@import qtek.deferred.chunk.light_equation\n\nuniform vec3 lightDirection;\nuniform vec3 lightColor;\nuniform vec3 eyePosition;\n\nuniform mat4 lightViewMatrix;\n\nuniform sampler2D causticsTexture;\nuniform float causticsIntensity : 1.0;\nuniform float causticsScale : 4;\n\nuniform vec3 ambientColor: [1, 1, 1];\n\nuniform float time: 0;\n\n// Motion_4WayChaos from Unreal Engine\n// https://www.youtube.com/watch?v=W8u7GONZzoY 16:57\nvec4 Motion_4WayChaos(sampler2D inputTexture, vec2 coord, float speed) {\n    vec4 tex1 = texture2D(inputTexture, coord + speed * vec2(0.1, 0.1) * time);\n    vec4 tex2 = texture2D(inputTexture, coord + vec2(0.418, 0.355) + speed * vec2(-0.1, 0.1) * time);\n    vec4 tex3 = texture2D(inputTexture, coord + vec2(0.865, 0.148) + speed * vec2(0.1, -0.1) * time);\n    vec4 tex4 = texture2D(inputTexture, coord + vec2(0.651, 0.752) + speed * vec2(-0.1, -0.1) * time);\n\n    return (tex1 + tex2 + tex3 + tex4) * 0.3;\n}\n\nvoid main()\n{\n    @import qtek.deferred.chunk.gbuffer_read\n\n    vec4 positionInLightSpace = lightViewMatrix * vec4(position, 1.0);\n    positionInLightSpace.xyz /= positionInLightSpace.w;\n    vec2 causticsUv = positionInLightSpace.xz;\n    causticsUv *= 1.0 / 64.0 / causticsScale;\n\n    causticsUv += time * 0.02;\n\n    vec3 causticsAffector = Motion_4WayChaos(causticsTexture, causticsUv, 0.5).rgb\n        * causticsIntensity;\n\n    vec3 L = -normalize(lightDirection);\n    vec3 V = normalize(eyePosition - position);\n\n    vec3 H = normalize(L + V);\n    float ndl = clamp(dot(N, L), 0.0, 1.0);\n    float ndh = clamp(dot(N, H), 0.0, 1.0);\n    float ndv = clamp(dot(N, V), 0.0, 1.0);\n\n    gl_FragColor.rgb = lightEquation(\n        lightColor * causticsAffector, diffuseColor, specularColor, ndl, ndh, ndv, glossiness\n    );\n\n    gl_FragColor.rgb += (clamp(dot(N, vec3(0.0, 1.0, 0.0)), 0.0, 1.0) * 0.5 + 0.5) * ambientColor;\n\n    gl_FragColor.a = 1.0;\n}"
+	module.exports = "\n@import qtek.deferred.chunk.light_head\n\n@import qtek.deferred.chunk.light_equation\n\nuniform vec3 lightDirection;\nuniform vec3 lightColor;\nuniform vec3 eyePosition;\n\nuniform mat4 lightViewMatrix;\n\nuniform sampler2D causticsTexture;\nuniform float causticsIntensity : 1.0;\nuniform float causticsScale : 4;\n\nuniform vec3 ambientColor: [1, 1, 1];\n\nuniform float time: 0;\n\n// Motion_4WayChaos from Unreal Engine\n// https://www.youtube.com/watch?v=W8u7GONZzoY 16:57\nvec4 Motion_4WayChaos(sampler2D inputTexture, vec2 coord, float speed) {\n    vec4 tex1 = texture2D(inputTexture, coord + speed * vec2(0.1, 0.1) * time);\n    vec4 tex2 = texture2D(inputTexture, coord + vec2(0.418, 0.355) + speed * vec2(-0.1, 0.1) * time);\n    vec4 tex3 = texture2D(inputTexture, coord + vec2(0.865, 0.148) + speed * vec2(0.1, -0.1) * time);\n    vec4 tex4 = texture2D(inputTexture, coord + vec2(0.651, 0.752) + speed * vec2(-0.1, -0.1) * time);\n\n    return (tex1 + tex2 + tex3 + tex4) * 0.3;\n}\n\nvoid main()\n{\n    @import qtek.deferred.chunk.gbuffer_read\n\n    vec4 positionInLightSpace = lightViewMatrix * vec4(position, 1.0);\n    positionInLightSpace.xyz /= positionInLightSpace.w;\n    vec2 causticsUv = positionInLightSpace.xz;\n    causticsUv *= 1.0 / 64.0 / causticsScale;\n\n    causticsUv += time * 0.02;\n\n    vec3 causticsAffector = Motion_4WayChaos(causticsTexture, causticsUv, 0.5).rgb\n        * causticsIntensity;\n\n    vec3 L = -normalize(lightDirection);\n    vec3 V = normalize(eyePosition - position);\n\n    vec3 H = normalize(L + V);\n    float ndl = clamp(dot(N, L), 0.0, 1.0);\n    float ndh = clamp(dot(N, H), 0.0, 1.0);\n    float ndv = clamp(dot(N, V), 0.0, 1.0);\n\n    gl_FragColor.rgb = lightEquation(\n        lightColor * causticsAffector, diffuseColor, specularColor, ndl, ndh, ndv, glossiness\n    );\n\n    gl_FragColor.rgb += (clamp(dot(N, vec3(0.0, 1.0, 0.0)), 0.0, 1.0) * 0.5 + 0.5) * ambientColor * diffuseColor;\n\n    gl_FragColor.a = 1.0;\n}"
 
 /***/ },
 /* 157 */
@@ -34547,14 +34608,17 @@
 	    var groupTask = new qtek.async.TaskGroup();
 	    groupTask.all(loaders).success(function (results) {
 	        results.forEach(function (result, idx) {
-	            var normalMap = new qtek.Texture2D();
+	            var normalMap = new qtek.Texture2D({
+	                anisotropic: 32
+	            });
 	            normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
 	            result.rootNode.traverse(function (node) {
 	                if (node.material) {
 	                    node.geometry.generateTangents();
 	                    node.material.linear = true;
-	                    node.material.roughness = 0.2;
+	                    node.material.roughness = 0.8;
 	                    node.material.normalMap = normalMap;
+	                    node.material.diffuseMap.anisotropic = 32;
 	                }
 	                if (fishIds[idx] === '15') {
 	                    node.rotation.rotateY(Math.PI / 2);
@@ -34905,6 +34969,111 @@
 	}
 
 	module.exports = Boid;
+
+/***/ },
+/* 164 */,
+/* 165 */
+/***/ function(module, exports, __webpack_require__) {
+
+	var qtek = __webpack_require__(1);
+
+	function Terrain() {
+	    // Seabed
+	    var sandTexture = new qtek.Texture2D({
+	        anisotropic: 32,
+	        wrapS: qtek.Texture.REPEAT,
+	        wrapT: qtek.Texture.REPEAT
+	    });
+	    var sandNormalTexture = new qtek.Texture2D({
+	        anisotropic: 32,
+	        wrapS: qtek.Texture.REPEAT,
+	        wrapT: qtek.Texture.REPEAT
+	    });
+	    sandTexture.load('asset/texture/sand.jpg');
+	    sandNormalTexture.load('asset/texture/sand_NRM.png');
+	    var plane = new qtek.Mesh({
+	        geometry: new qtek.geometry.Plane({
+	            widthSegments: 100,
+	            heightSegments: 100
+	        }),
+	        culling: false,
+	        material: new qtek.StandardMaterial({
+	            diffuseMap: sandTexture,
+	            normalMap: sandNormalTexture,
+	            uvRepeat: [20, 20],
+	            linear: true,
+	            // TODO Seems not working
+	            roughness: 1
+	        })
+	    });
+	    // Don't foget to generate tangents
+	    // plane.geometry.generateTangents();
+	    plane.scale.set(1000, 1000, 1);
+
+	    this._plane = plane;
+
+	    var self = this;
+	    var img = new Image();
+	    img.onload = function () {
+	        var canvas = document.createElement('canvas');
+	        canvas.width = img.width;
+	        canvas.height = img.height;
+	        var ctx = canvas.getContext('2d');
+	        ctx.drawImage(img, 0, 0, img.width, img.height);
+	        var imgData = ctx.getImageData(0, 0, img.width, img.height);
+
+	        // document.body.appendChild(canvas);
+	        // canvas.style.position = 'absolute';
+	        // canvas.style.left = 0;
+	        // canvas.style.bottom = 0;
+
+	        self._heightData = imgData.data;
+	        self._img = img;
+
+	        self.updateHeightmap();
+	    };
+	    img.src = 'asset/texture/terrain.png';
+	}
+
+	Terrain.prototype.updateHeightmap = function (opt) {
+	    var heightData = this._heightData;
+	    if (!heightData) {
+	        return;
+	    }
+	    opt = opt || {};
+	    opt.maxHeight = opt.maxHeight == null ? 10 : opt.maxHeight;
+
+	    var geometry = this._plane.geometry;
+	    var positions = geometry.attributes.position;
+
+	    var pos = [];
+	    var width = this._img.width;
+	    var height = this._img.height;
+	    for (var i = 0; i < geometry.vertexCount; i++) {
+	        positions.get(i, pos);
+	        // From -1 to 1
+	        var x = (pos[0] + 1) / 2;
+	        var y = (pos[1] + 1) / 2;
+	        // To width and height
+	        x = Math.round(x * (width - 1));
+	        y = Math.round(y * (height - 1));
+
+	        var idx = (y * width + x) * 4;
+	        var r = heightData[idx];
+	        pos[2] = ((r / 255 - 0.5) * 10 + 0.5) * opt.maxHeight;
+
+	        positions.set(i, pos);
+	    }
+	    geometry.generateVertexNormals();
+	    geometry.generateTangents();
+	    geometry.dirty();
+	};
+
+	Terrain.prototype.getRootNode = function () {
+	    return this._plane;
+	}
+
+	module.exports = Terrain;
 
 /***/ }
 /******/ ]);

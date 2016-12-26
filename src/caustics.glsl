@@ -54,7 +54,7 @@ void main()
         lightColor * causticsAffector, diffuseColor, specularColor, ndl, ndh, ndv, glossiness
     );
 
-    gl_FragColor.rgb += (clamp(dot(N, vec3(0.0, 1.0, 0.0)), 0.0, 1.0) * 0.5 + 0.5) * ambientColor;
+    gl_FragColor.rgb += (clamp(dot(N, vec3(0.0, 1.0, 0.0)), 0.0, 1.0) * 0.5 + 0.5) * ambientColor * diffuseColor;
 
     gl_FragColor.a = 1.0;
 }
