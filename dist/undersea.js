@@ -59,7 +59,9 @@
 	});
 	root.appendChild(renderer.canvas);
 
-	var deferredRenderer = new qtek.deferred.Renderer();
+	var deferredRenderer = new qtek.deferred.Renderer({
+	    shadowMapPass: new qtek.prePass.ShadowMap()
+	});
 	var causticsEffect = new CausticsEffect();
 	var fogEffect = new FogEffect();
 	var blurEffect = new BlurEffect();
@@ -87,7 +89,7 @@
 	var terrain = new Terrain();
 	var plane = terrain.getRootNode();
 	plane.rotation.rotateX(-Math.PI / 2);
-
+	plane.castShadow = false;
 	scene.add(plane);
 
 	var fishes = new Fishes();
@@ -100,6 +102,8 @@
 	causticsLight.intensity = 1;
 	causticsLight.position.set(0, 10, 1);
 	causticsLight.lookAt(scene.position);
+	causticsLight.shadowResolution = 2048;
+	causticsLight.shadowCascade = 2;
 
 	animation.on('frame', function (frameTime) {
 	    control.update(frameTime);
@@ -113,9 +117,13 @@
 
 	    tonemappingPass.render(renderer);
 	    // fxaaPass.render(renderer);
+	    // deferredRenderer.shadowMapPass.renderDebug(renderer);
 	});
 	deferredRenderer.on('lightaccumulate', function () {
 	    causticsEffect.render(renderer, deferredRenderer, camera);
+	});
+	deferredRenderer.on('beforelightaccumulate', function () {
+	    causticsEffect.prepareShadow(renderer, deferredRenderer, scene, camera);
 	});
 
 	function resize() {
@@ -22824,8 +22832,11 @@
 
 	            var shadowMapPass = this.shadowMapPass;
 	            if (shadowMapPass) {
+	                gl.clearColor(1, 1, 1, 1);
 	                this._prepareLightShadow(renderer, scene, camera);
 	            }
+
+	            this.trigger('beforelightaccumulate');
 
 	            lightAccumFrameBuffer.attach(gl, lightAccumTex);
 	            lightAccumFrameBuffer.bind(renderer);
@@ -23637,7 +23648,7 @@
 /***/ function(module, exports) {
 
 	
-	module.exports = "@export qtek.deferred.directional_light\n\n@import qtek.deferred.chunk.light_head\n\n@import qtek.deferred.chunk.light_equation\n\nuniform vec3 lightDirection;\nuniform vec3 lightColor;\n\nuniform vec3 eyePosition;\n\n#ifdef SHADOWMAP_ENABLED\nuniform float zNear;\nuniform float zFar;\n\nuniform sampler2D lightShadowMap;\nuniform float lightShadowMapSize;\nuniform mat4 lightMatrices[SHADOW_CASCADE];\nuniform float shadowCascadeClipsNear[SHADOW_CASCADE];\nuniform float shadowCascadeClipsFar[SHADOW_CASCADE];\n#endif\n\n@import qtek.plugin.shadow_map_common\n\nvoid main()\n{\n    @import qtek.deferred.chunk.gbuffer_read\n\n    vec3 L = -normalize(lightDirection);\n    vec3 V = normalize(eyePosition - position);\n\n    vec3 H = normalize(L + V);\n    float ndl = clamp(dot(N, L), 0.0, 1.0);\n    float ndh = clamp(dot(N, H), 0.0, 1.0);\n    float ndv = clamp(dot(N, V), 0.0, 1.0);\n\n    gl_FragColor.rgb = lightEquation(\n        lightColor, diffuseColor, specularColor, ndl, ndh, ndv, glossiness\n    );\n\n#ifdef SHADOWMAP_ENABLED\n    float shadowContrib = 1.0;\n    for (int i = 0; i < SHADOW_CASCADE; i++) {\n        if (\n            z >= shadowCascadeClipsNear[i] &&\n            z <= shadowCascadeClipsFar[i]\n        ) {\n            shadowContrib = computeShadowContrib(\n                lightShadowMap, lightMatrices[i], position, lightShadowMapSize,\n                vec2(1.0 / float(SHADOW_CASCADE), 1.0),\n                vec2(float(i) / float(SHADOW_CASCADE), 0.0)\n            );\n        }\n    }\n\n    gl_FragColor.rgb *= shadowContrib;\n#endif\n\n    gl_FragColor.a = 1.0;\n}\n@end\n";
+	module.exports = "@export qtek.deferred.directional_light\n\n@import qtek.deferred.chunk.light_head\n\n@import qtek.deferred.chunk.light_equation\n\nuniform vec3 lightDirection;\nuniform vec3 lightColor;\n\nuniform vec3 eyePosition;\n\n#ifdef SHADOWMAP_ENABLED\nuniform sampler2D lightShadowMap;\nuniform float lightShadowMapSize;\nuniform mat4 lightMatrices[SHADOW_CASCADE];\nuniform float shadowCascadeClipsNear[SHADOW_CASCADE];\nuniform float shadowCascadeClipsFar[SHADOW_CASCADE];\n#endif\n\n@import qtek.plugin.shadow_map_common\n\nvoid main()\n{\n    @import qtek.deferred.chunk.gbuffer_read\n\n    vec3 L = -normalize(lightDirection);\n    vec3 V = normalize(eyePosition - position);\n\n    vec3 H = normalize(L + V);\n    float ndl = clamp(dot(N, L), 0.0, 1.0);\n    float ndh = clamp(dot(N, H), 0.0, 1.0);\n    float ndv = clamp(dot(N, V), 0.0, 1.0);\n\n    gl_FragColor.rgb = lightEquation(\n        lightColor, diffuseColor, specularColor, ndl, ndh, ndv, glossiness\n    );\n\n#ifdef SHADOWMAP_ENABLED\n    float shadowContrib = 1.0;\n    for (int i = 0; i < SHADOW_CASCADE; i++) {\n        if (\n            z >= shadowCascadeClipsNear[i] &&\n            z <= shadowCascadeClipsFar[i]\n        ) {\n            shadowContrib = computeShadowContrib(\n                lightShadowMap, lightMatrices[i], position, lightShadowMapSize,\n                vec2(1.0 / float(SHADOW_CASCADE), 1.0),\n                vec2(float(i) / float(SHADOW_CASCADE), 0.0)\n            );\n        }\n    }\n\n    gl_FragColor.rgb *= shadowContrib;\n#endif\n\n    gl_FragColor.a = 1.0;\n}\n@end\n";
 
 
 /***/ },
@@ -34384,6 +34395,52 @@
 	        this._pass.setUniform(name, value);
 	    },
 
+	    prepareShadow: function (forwardRenderer, deferredRenderer, scene, camera) {
+	        if (!deferredRenderer.shadowMapPass || !this._light.castShadow) {
+	            this._pass.material.shader.unDefine('fragment', 'SHADOWMAP_ENABLED')
+	            return;
+	        }
+
+	        shadowCasters = this._shadowCasters || (this._shadowCasters = []);
+	        var count = 0;
+	        var queue = scene.opaqueQueue;
+	        for (var i = 0; i < queue.length; i++) {
+	            if (queue[i].castShadow) {
+	                shadowCasters[count++] = queue[i];
+	            }
+	        }
+	        shadowCasters.length = count;
+
+	        var shadowMaps = [];
+	        var lightMatrices = [];
+	        var cascadeClips = [];
+
+	        forwardRenderer.gl.clearColor(1, 1, 1, 1);
+
+	        deferredRenderer.shadowMapPass.renderDirectionalLightShadow(
+	            forwardRenderer, scene, camera, this._light, shadowCasters, cascadeClips, lightMatrices, shadowMaps
+	        );
+	        var cascadeClipsNear = cascadeClips.slice();
+	        var cascadeClipsFar = cascadeClips.slice();
+	        cascadeClipsNear.pop();
+	        cascadeClipsFar.shift();
+
+	        // Iterate from far to near
+	        cascadeClipsNear.reverse();
+	        cascadeClipsFar.reverse();
+	        lightMatrices.reverse();
+
+	        this._pass.material.shader.define('fragment', 'SHADOWMAP_ENABLED');
+	        this._pass.material.shader.define('fragment', 'SHADOW_CASCADE', this._light.shadowCascade);
+
+	        this._pass.material.setUniform('lightShadowMap', shadowMaps[0]);
+	        this._pass.material.setUniform('lightMatrices', lightMatrices);
+	        this._pass.material.setUniform('shadowCascadeClipsNear', cascadeClipsNear);
+	        this._pass.material.setUniform('shadowCascadeClipsFar', cascadeClipsFar);
+
+	        this._pass.material.setUniform('lightShadowMapSize', this._light.shadowResolution);
+	    },
+
 	    render: function (forwardRenderer, deferredRenderer, camera) {
 	        var light = this._light;
 	        light.update(true);
@@ -34421,7 +34478,7 @@
 /* 156 */
 /***/ function(module, exports) {
 
-	module.exports = "\n@import qtek.deferred.chunk.light_head\n\n@import qtek.deferred.chunk.light_equation\n\nuniform vec3 lightDirection;\nuniform vec3 lightColor;\nuniform vec3 eyePosition;\n\nuniform mat4 lightViewMatrix;\n\nuniform sampler2D causticsTexture;\nuniform float causticsIntensity : 1.0;\nuniform float causticsScale : 4;\n\nuniform vec3 ambientColor: [1, 1, 1];\n\nuniform float time: 0;\n\n// Motion_4WayChaos from Unreal Engine\n// https://www.youtube.com/watch?v=W8u7GONZzoY 16:57\nvec4 Motion_4WayChaos(sampler2D inputTexture, vec2 coord, float speed) {\n    vec4 tex1 = texture2D(inputTexture, coord + speed * vec2(0.1, 0.1) * time);\n    vec4 tex2 = texture2D(inputTexture, coord + vec2(0.418, 0.355) + speed * vec2(-0.1, 0.1) * time);\n    vec4 tex3 = texture2D(inputTexture, coord + vec2(0.865, 0.148) + speed * vec2(0.1, -0.1) * time);\n    vec4 tex4 = texture2D(inputTexture, coord + vec2(0.651, 0.752) + speed * vec2(-0.1, -0.1) * time);\n\n    return (tex1 + tex2 + tex3 + tex4) * 0.3;\n}\n\nvoid main()\n{\n    @import qtek.deferred.chunk.gbuffer_read\n\n    vec4 positionInLightSpace = lightViewMatrix * vec4(position, 1.0);\n    positionInLightSpace.xyz /= positionInLightSpace.w;\n    vec2 causticsUv = positionInLightSpace.xz;\n    causticsUv *= 1.0 / 64.0 / causticsScale;\n\n    causticsUv += time * 0.02;\n\n    vec3 causticsAffector = Motion_4WayChaos(causticsTexture, causticsUv, 0.5).rgb\n        * causticsIntensity;\n\n    vec3 L = -normalize(lightDirection);\n    vec3 V = normalize(eyePosition - position);\n\n    vec3 H = normalize(L + V);\n    float ndl = clamp(dot(N, L), 0.0, 1.0);\n    float ndh = clamp(dot(N, H), 0.0, 1.0);\n    float ndv = clamp(dot(N, V), 0.0, 1.0);\n\n    gl_FragColor.rgb = lightEquation(\n        lightColor * causticsAffector, diffuseColor, specularColor, ndl, ndh, ndv, glossiness\n    );\n\n    gl_FragColor.rgb += (clamp(dot(N, vec3(0.0, 1.0, 0.0)), 0.0, 1.0) * 0.5 + 0.5) * ambientColor * diffuseColor;\n\n    gl_FragColor.a = 1.0;\n}"
+	module.exports = "\n@import qtek.deferred.chunk.light_head\n\n@import qtek.deferred.chunk.light_equation\n\nuniform vec3 lightDirection;\nuniform vec3 lightColor;\nuniform vec3 eyePosition;\n\nuniform mat4 lightViewMatrix;\n\nuniform sampler2D causticsTexture;\nuniform float causticsIntensity : 1.0;\nuniform float causticsScale : 4;\n\nuniform vec3 ambientColor: [1, 1, 1];\n\nuniform float time: 0;\n\n#ifdef SHADOWMAP_ENABLED\nuniform sampler2D lightShadowMap;\nuniform float lightShadowMapSize;\nuniform mat4 lightMatrices[SHADOW_CASCADE];\nuniform float shadowCascadeClipsNear[SHADOW_CASCADE];\nuniform float shadowCascadeClipsFar[SHADOW_CASCADE];\n#endif\n\n@import qtek.plugin.shadow_map_common\n\n// Motion_4WayChaos from Unreal Engine\n// https://www.youtube.com/watch?v=W8u7GONZzoY 16:57\nvec4 Motion_4WayChaos(sampler2D inputTexture, vec2 coord, float speed) {\n    vec4 tex1 = texture2D(inputTexture, coord + speed * vec2(0.1, 0.1) * time);\n    vec4 tex2 = texture2D(inputTexture, coord + vec2(0.418, 0.355) + speed * vec2(-0.1, 0.1) * time);\n    vec4 tex3 = texture2D(inputTexture, coord + vec2(0.865, 0.148) + speed * vec2(0.1, -0.1) * time);\n    vec4 tex4 = texture2D(inputTexture, coord + vec2(0.651, 0.752) + speed * vec2(-0.1, -0.1) * time);\n\n    return (tex1 + tex2 + tex3 + tex4) * 0.3;\n}\n\nvoid main()\n{\n    @import qtek.deferred.chunk.gbuffer_read\n\n    vec4 positionInLightSpace = lightViewMatrix * vec4(position, 1.0);\n    positionInLightSpace.xyz /= positionInLightSpace.w;\n    vec2 causticsUv = positionInLightSpace.xz;\n    causticsUv *= 1.0 / 64.0 / causticsScale;\n\n    causticsUv += time * 0.02;\n\n    vec3 causticsAffector = Motion_4WayChaos(causticsTexture, causticsUv, 0.5).rgb\n        * causticsIntensity;\n\n    vec3 L = -normalize(lightDirection);\n    vec3 V = normalize(eyePosition - position);\n\n    vec3 H = normalize(L + V);\n    float ndl = clamp(dot(N, L), 0.0, 1.0);\n    float ndh = clamp(dot(N, H), 0.0, 1.0);\n    float ndv = clamp(dot(N, V), 0.0, 1.0);\n\n    gl_FragColor.rgb = lightEquation(\n        lightColor * causticsAffector, diffuseColor, specularColor, ndl, ndh, ndv, glossiness\n    );\n\n#ifdef SHADOWMAP_ENABLED\n    float shadowContrib = 1.0;\n    for (int i = 0; i < SHADOW_CASCADE; i++) {\n        if (\n            z >= shadowCascadeClipsNear[i] &&\n            z <= shadowCascadeClipsFar[i]\n        ) {\n            shadowContrib = computeShadowContrib(\n                lightShadowMap, lightMatrices[i], position, lightShadowMapSize,\n                vec2(1.0 / float(SHADOW_CASCADE), 1.0),\n                vec2(float(i) / float(SHADOW_CASCADE), 0.0)\n            );\n        }\n    }\n\n    gl_FragColor.rgb *= shadowContrib;\n#endif\n\n    gl_FragColor.rgb += (clamp(dot(N, vec3(0.0, 1.0, 0.0)), 0.0, 1.0) * 0.5 + 0.5) * ambientColor * diffuseColor;\n\n    gl_FragColor.a = 1.0;\n}"
 
 /***/ },
 /* 157 */
@@ -34989,10 +35046,16 @@
 	    sandTexture.load('asset/texture/sand.jpg');
 	    sandNormalTexture.load('asset/texture/sand_NRM.png');
 	    var plane = new qtek.Mesh({
+	        geometry: new qtek.geometry.Plane({
+	            widthSegments: 100,
+	            heightSegments: 100,
+	            // Must mark as dynamic
+	            dynamic: true
+	        }),
 	        culling: false,
 	        material: new qtek.StandardMaterial({
 	            diffuseMap: sandTexture,
-	            normalMap: sandNormalTexture,
+	            // normalMap: sandNormalTexture,
 	            uvRepeat: [20, 20],
 	            linear: true,
 	            // TODO Seems not working
@@ -35036,13 +35099,7 @@
 	    opt = opt || {};
 	    opt.maxHeight = opt.maxHeight == null ? 10 : opt.maxHeight;
 
-	    // TODO Dispose previous
-	    var geometry = this._plane.geometry = new qtek.geometry.Plane({
-	        widthSegments: 100,
-	        heightSegments: 100,
-	        // Must mark as dynamic
-	        // dynamic: true
-	    });
+	    var geometry = this._plane.geometry;
 	    var positions = geometry.attributes.position;
 
 	    var pos = [];
@@ -35064,7 +35121,7 @@
 	        positions.set(i, pos);
 	    }
 	    geometry.generateVertexNormals();
-	    geometry.generateTangents();
+	    // geometry.generateTangents();
 	    geometry.dirty();
 	};
 

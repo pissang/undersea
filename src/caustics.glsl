@@ -17,6 +17,16 @@ uniform vec3 ambientColor: [1, 1, 1];
 
 uniform float time: 0;
 
+#ifdef SHADOWMAP_ENABLED
+uniform sampler2D lightShadowMap;
+uniform float lightShadowMapSize;
+uniform mat4 lightMatrices[SHADOW_CASCADE];
+uniform float shadowCascadeClipsNear[SHADOW_CASCADE];
+uniform float shadowCascadeClipsFar[SHADOW_CASCADE];
+#endif
+
+@import qtek.plugin.shadow_map_common
+
 // Motion_4WayChaos from Unreal Engine
 // https://www.youtube.com/watch?v=W8u7GONZzoY 16:57
 vec4 Motion_4WayChaos(sampler2D inputTexture, vec2 coord, float speed) {
@@ -53,6 +63,24 @@ void main()
     gl_FragColor.rgb = lightEquation(
         lightColor * causticsAffector, diffuseColor, specularColor, ndl, ndh, ndv, glossiness
     );
+
+#ifdef SHADOWMAP_ENABLED
+    float shadowContrib = 1.0;
+    for (int i = 0; i < SHADOW_CASCADE; i++) {
+        if (
+            z >= shadowCascadeClipsNear[i] &&
+            z <= shadowCascadeClipsFar[i]
+        ) {
+            shadowContrib = computeShadowContrib(
+                lightShadowMap, lightMatrices[i], position, lightShadowMapSize,
+                vec2(1.0 / float(SHADOW_CASCADE), 1.0),
+                vec2(float(i) / float(SHADOW_CASCADE), 0.0)
+            );
+        }
+    }
+
+    gl_FragColor.rgb *= shadowContrib;
+#endif
 
     gl_FragColor.rgb += (clamp(dot(N, vec3(0.0, 1.0, 0.0)), 0.0, 1.0) * 0.5 + 0.5) * ambientColor * diffuseColor;
 

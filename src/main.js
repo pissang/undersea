@@ -13,7 +13,9 @@ var renderer = new qtek.Renderer({
 });
 root.appendChild(renderer.canvas);
 
-var deferredRenderer = new qtek.deferred.Renderer();
+var deferredRenderer = new qtek.deferred.Renderer({
+    shadowMapPass: new qtek.prePass.ShadowMap()
+});
 var causticsEffect = new CausticsEffect();
 var fogEffect = new FogEffect();
 var blurEffect = new BlurEffect();
@@ -41,7 +43,7 @@ var control = new qtek.plugin.OrbitControl({
 var terrain = new Terrain();
 var plane = terrain.getRootNode();
 plane.rotation.rotateX(-Math.PI / 2);
-
+plane.castShadow = false;
 scene.add(plane);
 
 var fishes = new Fishes();
@@ -54,6 +56,8 @@ var causticsLight = causticsEffect.getLight();
 causticsLight.intensity = 1;
 causticsLight.position.set(0, 10, 1);
 causticsLight.lookAt(scene.position);
+causticsLight.shadowResolution = 2048;
+causticsLight.shadowCascade = 2;
 
 animation.on('frame', function (frameTime) {
     control.update(frameTime);
@@ -67,9 +71,13 @@ animation.on('frame', function (frameTime) {
 
     tonemappingPass.render(renderer);
     // fxaaPass.render(renderer);
+    // deferredRenderer.shadowMapPass.renderDebug(renderer);
 });
 deferredRenderer.on('lightaccumulate', function () {
     causticsEffect.render(renderer, deferredRenderer, camera);
+});
+deferredRenderer.on('beforelightaccumulate', function () {
+    causticsEffect.prepareShadow(renderer, deferredRenderer, scene, camera);
 });
 
 function resize() {

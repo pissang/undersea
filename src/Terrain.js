@@ -15,10 +15,16 @@ function Terrain() {
     sandTexture.load('asset/texture/sand.jpg');
     sandNormalTexture.load('asset/texture/sand_NRM.png');
     var plane = new qtek.Mesh({
+        geometry: new qtek.geometry.Plane({
+            widthSegments: 100,
+            heightSegments: 100,
+            // Must mark as dynamic
+            dynamic: true
+        }),
         culling: false,
         material: new qtek.StandardMaterial({
             diffuseMap: sandTexture,
-            normalMap: sandNormalTexture,
+            // normalMap: sandNormalTexture,
             uvRepeat: [20, 20],
             linear: true,
             // TODO Seems not working
@@ -62,13 +68,7 @@ Terrain.prototype.updateHeightmap = function (opt) {
     opt = opt || {};
     opt.maxHeight = opt.maxHeight == null ? 10 : opt.maxHeight;
 
-    // TODO Dispose previous
-    var geometry = this._plane.geometry = new qtek.geometry.Plane({
-        widthSegments: 100,
-        heightSegments: 100,
-        // Must mark as dynamic
-        // dynamic: true
-    });
+    var geometry = this._plane.geometry;
     var positions = geometry.attributes.position;
 
     var pos = [];
@@ -90,7 +90,7 @@ Terrain.prototype.updateHeightmap = function (opt) {
         positions.set(i, pos);
     }
     geometry.generateVertexNormals();
-    geometry.generateTangents();
+    // geometry.generateTangents();
     geometry.dirty();
 };
 

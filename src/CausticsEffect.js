@@ -49,6 +49,52 @@ CausticsEffect.prototype = {
         this._pass.setUniform(name, value);
     },
 
+    prepareShadow: function (forwardRenderer, deferredRenderer, scene, camera) {
+        if (!deferredRenderer.shadowMapPass || !this._light.castShadow) {
+            this._pass.material.shader.unDefine('fragment', 'SHADOWMAP_ENABLED')
+            return;
+        }
+
+        shadowCasters = this._shadowCasters || (this._shadowCasters = []);
+        var count = 0;
+        var queue = scene.opaqueQueue;
+        for (var i = 0; i < queue.length; i++) {
+            if (queue[i].castShadow) {
+                shadowCasters[count++] = queue[i];
+            }
+        }
+        shadowCasters.length = count;
+
+        var shadowMaps = [];
+        var lightMatrices = [];
+        var cascadeClips = [];
+
+        forwardRenderer.gl.clearColor(1, 1, 1, 1);
+
+        deferredRenderer.shadowMapPass.renderDirectionalLightShadow(
+            forwardRenderer, scene, camera, this._light, shadowCasters, cascadeClips, lightMatrices, shadowMaps
+        );
+        var cascadeClipsNear = cascadeClips.slice();
+        var cascadeClipsFar = cascadeClips.slice();
+        cascadeClipsNear.pop();
+        cascadeClipsFar.shift();
+
+        // Iterate from far to near
+        cascadeClipsNear.reverse();
+        cascadeClipsFar.reverse();
+        lightMatrices.reverse();
+
+        this._pass.material.shader.define('fragment', 'SHADOWMAP_ENABLED');
+        this._pass.material.shader.define('fragment', 'SHADOW_CASCADE', this._light.shadowCascade);
+
+        this._pass.material.setUniform('lightShadowMap', shadowMaps[0]);
+        this._pass.material.setUniform('lightMatrices', lightMatrices);
+        this._pass.material.setUniform('shadowCascadeClipsNear', cascadeClipsNear);
+        this._pass.material.setUniform('shadowCascadeClipsFar', cascadeClipsFar);
+
+        this._pass.material.setUniform('lightShadowMapSize', this._light.shadowResolution);
+    },
+
     render: function (forwardRenderer, deferredRenderer, camera) {
         var light = this._light;
         light.update(true);
