@@ -42,9 +42,7 @@ var terrain = new Terrain();
 var plane = terrain.getRootNode();
 plane.rotation.rotateX(-Math.PI / 2);
 
-setTimeout(function () {
-    scene.add(plane);
-}, 2000);
+scene.add(plane);
 
 var fishes = new Fishes();
 scene.add(fishes.getRootNode());
