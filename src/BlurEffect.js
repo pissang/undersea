@@ -43,6 +43,9 @@ CausticsEffect.prototype = {
         passV.setUniform('projectionInv', camera.invProjectionMatrix._array);
         passV.setUniform('gBufferTexture2', gBuffer.getTargetTexture2());
 
+        passH.setUniform('textureSize', [colorTexture.width, colorTexture.height]);
+        passV.setUniform('textureSize', [colorTexture.width, colorTexture.height]);
+
         passH.render(forwardRenderer);
         passV.render(forwardRenderer);
     }

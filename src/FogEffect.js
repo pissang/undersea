@@ -28,6 +28,8 @@ CausticsEffect.prototype = {
 
         pass.setUniform('colorTexture', colorTexture);
         pass.setUniform('projectionInv', camera.invProjectionMatrix._array);
+        pass.setUniform('viewInv', camera.worldTransform._array);
+        pass.setUniform('eyePosition', camera.getWorldPosition()._array);
         pass.setUniform('gBufferTexture2', gBuffer.getTargetTexture2());
 
         this._pass.render(forwardRenderer);

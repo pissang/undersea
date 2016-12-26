@@ -56,7 +56,7 @@
 	var root = document.getElementById('root');
 
 	var renderer = new qtek.Renderer({
-	    // devicePixelRatio: 1
+	    devicePixelRatio: 1
 	});
 	root.appendChild(renderer.canvas);
 
@@ -67,13 +67,24 @@
 	var fogEffect = new FogEffect();
 	var blurEffect = new BlurEffect();
 
-	var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'));
+	var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'), true);
 	tonemappingPass.getShader().disableTexturesAll();
 	tonemappingPass.getShader().enableTexture('texture');
 	tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
 
+	var lutPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.lut'), true);
+	var lutTexture = new qtek.Texture2D({
+	    flipY: false,
+	    useMipmap: false,
+	    minFilter: qtek.Texture.LINEAR,
+	    magFilter: qtek.Texture.LINEAR
+	});
+	lutTexture.load('asset/texture/filmstock_50.png');
+	lutPass.setUniform('lookup', lutTexture);
+	lutPass.setUniform('texture', tonemappingPass.getTargetTexture());
+
 	var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
-	fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
+	fxaaPass.setUniform('texture', lutPass.getTargetTexture());
 
 	var animation = new qtek.animation.Animation();
 	animation.start();
@@ -97,11 +108,24 @@
 	scene.add(fishes.getRootNode());
 
 	camera.position.set(0, 60, 80);
-	// camera.lookAt(new qtek.math.Vector3(0, 30, 0));
+	camera.lookAt(new qtek.math.Vector3(0, 30, 0));
+
+	// Coral
+	var loader = new qtek.loader.GLTF({
+	    textureRootPath: 'asset/model/coral_texture',
+	    rootNode: new qtek.Node()
+	});
+	loader.success(function (result) {
+	    result.rootNode.rotation.rotateX(-Math.PI / 2);
+	    result.rootNode.scale.set(300, 300, 300);
+	    result.rootNode.position.set(-10, 10, -10);
+	    scene.add(result.rootNode);
+	});
+	loader.load('asset/model/coral.gltf');
 
 	var causticsLight = causticsEffect.getLight();
-	causticsLight.intensity = 1;
-	causticsLight.position.set(0, 10, 1);
+	causticsLight.intensity = 1.8;
+	causticsLight.position.set(0, 10, 7);
 	causticsLight.lookAt(scene.position);
 	causticsLight.shadowResolution = 2048;
 	causticsLight.shadowCascade = 2;
@@ -114,10 +138,11 @@
 	    // renderer.render(scene, camera);
 	    deferredRenderer.render(renderer, scene, camera, true);
 	    fogEffect.render(renderer, deferredRenderer, camera, deferredRenderer.getTargetTexture());
-	    blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
+	    // blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
 
 	    tonemappingPass.render(renderer);
-	    // fxaaPass.render(renderer);
+	    lutPass.render(renderer);
+	    fxaaPass.render(renderer);
 	    // deferredRenderer.shadowMapPass.renderDebug(renderer);
 	});
 	deferredRenderer.on('lightaccumulate', function () {
@@ -130,6 +155,9 @@
 	function resize() {
 	    renderer.resize(root.clientWidth, root.clientHeight);
 	    camera.aspect = renderer.getViewportAspect();
+
+	    lutPass.resize(renderer.getWidth(), renderer.getHeight());
+	    tonemappingPass.resize(renderer.getWidth(), renderer.getHeight());
 	}
 
 	resize();
@@ -153,19 +181,25 @@
 
 	var canvas = document.createElement('canvas');
 	canvas.width = 200;
-	canvas.height = 50;
+	canvas.height = 30;
 	var ctx = canvas.getContext('2d');
-	ctx.font = '30px monospace';
-	ctx.textBaseline = 'middle';
-	ctx.textAlign = 'center';
 
-	function textFormation(text) {
-	    ctx.clearRect(0, 0, canvas.width, canvas.height);
-	    ctx.fillText(config.text, canvas.width / 2, canvas.height / 2);
+	function textFormation() {
+	    ctx.textBaseline = 'top';
+	    ctx.textAlign = 'left';
+	    ctx.font = '26px Helvetica';
+	    canvas.width = ctx.measureText(config.text).width;
+
+	    ctx.textBaseline = 'top';
+	    ctx.textAlign = 'left';
+	    ctx.font = '26px Helvetica';
+	    ctx.fillText(config.text, 0, 0);
 
 	    var box = new qtek.math.BoundingBox();
-	    box.min.set(-300, 40, -2);
-	    box.max.set(300, 150, 2);
+	    var height = 60;
+	    var width = height / canvas.height * canvas.width;
+	    box.min.set(-width / 2, 20, -2);
+	    box.max.set(width / 2, 20 + height, 2);
 	    fishes.setFormation(canvas, box);
 	}
 
@@ -173,10 +207,12 @@
 	    text: '',
 
 	    causticsIntensity: 3,
-	    causticsScale: 1.7,
+	    causticsScale: 3,
 
 	    fogDensity: 0.2,
-	    fogColor: [36,95,85],
+	    fogColor0: [36,95,85],
+	    fogColor1: [36,95,85],
+
 	    sceneColor: [144,190,200],
 	    ambientIntensity: 0.8,
 
@@ -190,7 +226,10 @@
 	    fogEffect.setParameter('sceneColor', config.sceneColor.map(function (col) {
 	        return col / 255;
 	    }));
-	    fogEffect.setParameter('fogColor', config.fogColor.map(function (col) {
+	    fogEffect.setParameter('fogColor0', config.fogColor0.map(function (col) {
+	        return col / 255;
+	    }));
+	    fogEffect.setParameter('fogColor1', config.fogColor1.map(function (col) {
 	        return col / 255;
 	    }));
 
@@ -213,7 +252,8 @@
 	gui.add(config, 'text').onChange(textFormation);
 
 	gui.add(config, 'fogDensity', 0, 1).onChange(update);
-	gui.addColor(config, 'fogColor').onChange(update);
+	gui.addColor(config, 'fogColor0').onChange(update);
+	gui.addColor(config, 'fogColor1').onChange(update);
 	gui.addColor(config, 'sceneColor').onChange(update);
 	gui.add(config, 'causticsIntensity', 0, 4).onChange(update);
 	gui.add(config, 'causticsScale', 0, 8).onChange(update);
@@ -34553,6 +34593,8 @@
 
 	        pass.setUniform('colorTexture', colorTexture);
 	        pass.setUniform('projectionInv', camera.invProjectionMatrix._array);
+	        pass.setUniform('viewInv', camera.worldTransform._array);
+	        pass.setUniform('eyePosition', camera.getWorldPosition()._array);
 	        pass.setUniform('gBufferTexture2', gBuffer.getTargetTexture2());
 
 	        this._pass.render(forwardRenderer);
@@ -34565,7 +34607,7 @@
 /* 158 */
 /***/ function(module, exports) {
 
-	module.exports = "uniform sampler2D colorTexture;\n\nuniform sampler2D gBufferTexture2;\n\nuniform mat4 projectionInv;\n\nuniform vec3 sceneColor: [1, 1, 1];\n// from 0.0 to 1.0\nuniform float fogDensity: 0.2;\nuniform vec3 fogColor: [0.3, 0.3, 0.3];\n\n// TODO\nuniform float range: 40.0;\n\nvarying vec2 v_Texcoord;\n\n#define LOG2 1.442695\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    float depth = texture2D(gBufferTexture2, v_Texcoord).r * 2.0 - 1.0;\n\n    vec2 xy = v_Texcoord * 2.0 - 1.0;\n    vec4 projectedPos = vec4(xy, depth, 1.0);\n    vec4 p4 = projectionInv * projectedPos;\n\n    vec3 position = p4.xyz / p4.w;\n    // Range based fog http://in2gpu.com/2014/07/22/create-fog-shader/\n    float distance = length(position) / range;\n\n    vec3 color = decodeHDR(texture2D(colorTexture, v_Texcoord)).rgb;\n    gl_FragColor.rgb = mix(\n         fogColor, color, clamp(exp2(-fogDensity * fogDensity * distance * distance * LOG2), 0.0, 1.0)\n    ) // Simply use sceneColor to tint the color\n    * sceneColor;\n\n    gl_FragColor.a = 1.0;\n}"
+	module.exports = "uniform sampler2D colorTexture;\n\nuniform sampler2D gBufferTexture2;\n\nuniform mat4 projectionInv;\nuniform mat4 viewInv;\n\nuniform vec3 sceneColor: [1, 1, 1];\n\n// from 0.0 to 1.0\nuniform float fogDensity: 0.2;\nuniform vec3 fogColor0: [0.3, 0.3, 0.3];\nuniform vec3 fogColor1: [0.1, 0.1, 0.1];\n\nuniform vec3 eyePosition: [0.0, 0.0, 0.0];\n\n// TODO\nuniform float range: 40.0;\n\nvarying vec2 v_Texcoord;\n\n#define LOG2 1.442695\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    float depth = texture2D(gBufferTexture2, v_Texcoord).r * 2.0 - 1.0;\n\n    vec2 xy = v_Texcoord * 2.0 - 1.0;\n    vec4 projectedPos = vec4(xy, depth, 1.0);\n    vec4 p4 = projectionInv * projectedPos;\n\n    vec3 viewPosition = p4.xyz / p4.w;\n    // Range based fog http://in2gpu.com/2014/07/22/create-fog-shader/\n    float distance = length(viewPosition) / range;\n\n    vec4 worldPosition = viewInv * vec4(viewPosition, 1.0);\n\n    vec3 fogColor = mix(fogColor1, fogColor0, clamp(normalize(worldPosition.xyz - eyePosition).y, 0.0, 1.0));\n\n    vec3 color = decodeHDR(texture2D(colorTexture, v_Texcoord)).rgb;\n    gl_FragColor.rgb = mix(\n         fogColor, color, clamp(exp2(-fogDensity * fogDensity * distance * distance * LOG2), 0.0, 1.0)\n    ) // Simply use sceneColor to tint the color\n    * sceneColor;\n\n    gl_FragColor.a = 1.0;\n}"
 
 /***/ },
 /* 159 */
@@ -34663,6 +34705,9 @@
 	        passH.setUniform('gBufferTexture2', gBuffer.getTargetTexture2());
 	        passV.setUniform('projectionInv', camera.invProjectionMatrix._array);
 	        passV.setUniform('gBufferTexture2', gBuffer.getTargetTexture2());
+
+	        passH.setUniform('textureSize', [colorTexture.width, colorTexture.height]);
+	        passV.setUniform('textureSize', [colorTexture.width, colorTexture.height]);
 
 	        passH.render(forwardRenderer);
 	        passV.render(forwardRenderer);
@@ -34821,7 +34866,6 @@
 
 	        if (a > 0.7 * 255) {
 	            var wx = (x / img.width) * boxWidth + box.min.x;
-	            console.log(y);
 	            var wy = (1 - y / img.height) * boxHeight + box.min.y - this._rootNode.position.y;
 	            var wz = Math.random() * boxDepth + box.min.z;
 

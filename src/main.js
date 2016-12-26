@@ -10,7 +10,7 @@ var throttle = require('lodash.throttle');
 var root = document.getElementById('root');
 
 var renderer = new qtek.Renderer({
-    // devicePixelRatio: 1
+    devicePixelRatio: 1
 });
 root.appendChild(renderer.canvas);
 
@@ -21,13 +21,24 @@ var causticsEffect = new CausticsEffect();
 var fogEffect = new FogEffect();
 var blurEffect = new BlurEffect();
 
-var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'));
+var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'), true);
 tonemappingPass.getShader().disableTexturesAll();
 tonemappingPass.getShader().enableTexture('texture');
 tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
 
+var lutPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.lut'), true);
+var lutTexture = new qtek.Texture2D({
+    flipY: false,
+    useMipmap: false,
+    minFilter: qtek.Texture.LINEAR,
+    magFilter: qtek.Texture.LINEAR
+});
+lutTexture.load('asset/texture/filmstock_50.png');
+lutPass.setUniform('lookup', lutTexture);
+lutPass.setUniform('texture', tonemappingPass.getTargetTexture());
+
 var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
-fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
+fxaaPass.setUniform('texture', lutPass.getTargetTexture());
 
 var animation = new qtek.animation.Animation();
 animation.start();
@@ -51,11 +62,24 @@ var fishes = new Fishes();
 scene.add(fishes.getRootNode());
 
 camera.position.set(0, 60, 80);
-// camera.lookAt(new qtek.math.Vector3(0, 30, 0));
+camera.lookAt(new qtek.math.Vector3(0, 30, 0));
+
+// Coral
+var loader = new qtek.loader.GLTF({
+    textureRootPath: 'asset/model/coral_texture',
+    rootNode: new qtek.Node()
+});
+loader.success(function (result) {
+    result.rootNode.rotation.rotateX(-Math.PI / 2);
+    result.rootNode.scale.set(300, 300, 300);
+    result.rootNode.position.set(-10, 10, -10);
+    scene.add(result.rootNode);
+});
+loader.load('asset/model/coral.gltf');
 
 var causticsLight = causticsEffect.getLight();
-causticsLight.intensity = 1;
-causticsLight.position.set(0, 10, 1);
+causticsLight.intensity = 1.8;
+causticsLight.position.set(0, 10, 7);
 causticsLight.lookAt(scene.position);
 causticsLight.shadowResolution = 2048;
 causticsLight.shadowCascade = 2;
@@ -68,10 +92,11 @@ animation.on('frame', function (frameTime) {
     // renderer.render(scene, camera);
     deferredRenderer.render(renderer, scene, camera, true);
     fogEffect.render(renderer, deferredRenderer, camera, deferredRenderer.getTargetTexture());
-    blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
+    // blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
 
     tonemappingPass.render(renderer);
-    // fxaaPass.render(renderer);
+    lutPass.render(renderer);
+    fxaaPass.render(renderer);
     // deferredRenderer.shadowMapPass.renderDebug(renderer);
 });
 deferredRenderer.on('lightaccumulate', function () {
@@ -84,6 +109,9 @@ deferredRenderer.on('beforelightaccumulate', function () {
 function resize() {
     renderer.resize(root.clientWidth, root.clientHeight);
     camera.aspect = renderer.getViewportAspect();
+
+    lutPass.resize(renderer.getWidth(), renderer.getHeight());
+    tonemappingPass.resize(renderer.getWidth(), renderer.getHeight());
 }
 
 resize();
@@ -107,19 +135,25 @@ window.addEventListener('mousemove', setGoalAround);
 
 var canvas = document.createElement('canvas');
 canvas.width = 200;
-canvas.height = 50;
+canvas.height = 30;
 var ctx = canvas.getContext('2d');
-ctx.font = '30px monospace';
-ctx.textBaseline = 'middle';
-ctx.textAlign = 'center';
 
-function textFormation(text) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillText(config.text, canvas.width / 2, canvas.height / 2);
+function textFormation() {
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.font = '26px Helvetica';
+    canvas.width = ctx.measureText(config.text).width;
+
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.font = '26px Helvetica';
+    ctx.fillText(config.text, 0, 0);
 
     var box = new qtek.math.BoundingBox();
-    box.min.set(-300, 40, -2);
-    box.max.set(300, 150, 2);
+    var height = 60;
+    var width = height / canvas.height * canvas.width;
+    box.min.set(-width / 2, 20, -2);
+    box.max.set(width / 2, 20 + height, 2);
     fishes.setFormation(canvas, box);
 }
 
@@ -127,10 +161,12 @@ var config = {
     text: '',
 
     causticsIntensity: 3,
-    causticsScale: 1.7,
+    causticsScale: 3,
 
     fogDensity: 0.2,
-    fogColor: [36,95,85],
+    fogColor0: [36,95,85],
+    fogColor1: [36,95,85],
+
     sceneColor: [144,190,200],
     ambientIntensity: 0.8,
 
@@ -144,7 +180,10 @@ function update() {
     fogEffect.setParameter('sceneColor', config.sceneColor.map(function (col) {
         return col / 255;
     }));
-    fogEffect.setParameter('fogColor', config.fogColor.map(function (col) {
+    fogEffect.setParameter('fogColor0', config.fogColor0.map(function (col) {
+        return col / 255;
+    }));
+    fogEffect.setParameter('fogColor1', config.fogColor1.map(function (col) {
         return col / 255;
     }));
 
@@ -167,7 +206,8 @@ gui.remember(config);
 gui.add(config, 'text').onChange(textFormation);
 
 gui.add(config, 'fogDensity', 0, 1).onChange(update);
-gui.addColor(config, 'fogColor').onChange(update);
+gui.addColor(config, 'fogColor0').onChange(update);
+gui.addColor(config, 'fogColor1').onChange(update);
 gui.addColor(config, 'sceneColor').onChange(update);
 gui.add(config, 'causticsIntensity', 0, 4).onChange(update);
 gui.add(config, 'causticsScale', 0, 8).onChange(update);

@@ -138,7 +138,6 @@ Fishes.prototype.setFormation = function (img, box) {
 
         if (a > 0.7 * 255) {
             var wx = (x / img.width) * boxWidth + box.min.x;
-            console.log(y);
             var wy = (1 - y / img.height) * boxHeight + box.min.y - this._rootNode.position.y;
             var wz = Math.random() * boxDepth + box.min.z;
 
