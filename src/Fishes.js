@@ -36,7 +36,7 @@ function Fishes() {
                 }
             });
         });
-        for (var i = 0; i < 400; i++) {
+        for (var i = 0; i < 500; i++) {
             var boid = new Boid();
             boid.position.x = Math.random() * 200 - 100;
             boid.position.y = Math.random() * 80 - 40;
@@ -80,7 +80,7 @@ Fishes.prototype.getRootNode = function () {
     return this._rootNode;
 };
 
-Fishes.prototype.setGoalAround = function (position, radius) {
+Fishes.prototype.goTo = function (position, radius) {
     var boids = this._boids;
     for (var i = 0; i < boids.length; i++) {
 		boid = boids[i];
@@ -100,6 +100,63 @@ Fishes.prototype.setGoalAround = function (position, radius) {
 
         boid.setGoal(boid.__goal);
         boid.setGoalIntensity(0.05);
+    }
+};
+
+var canvas = document.createElement('canvas');
+var ctx = canvas.getContext('2d');
+
+canvas.style.position = 'absolute';
+canvas.style.bottom = 0;
+canvas.style.left = 0;
+document.body.appendChild(canvas);
+Fishes.prototype.setFormation = function (img, box) {
+
+    canvas.width = img.width;
+    canvas.height = img.height;
+
+
+    ctx.drawImage(img, 0, 0, img.width, img.height);
+    var imgData = ctx.getImageData(0, 0, img.width, img.height);
+
+    var usedFish = 0;
+    var boids = this._boids;
+
+    var boxWidth = box.max.x - box.min.x;
+    var boxHeight = box.max.y - box.min.y;
+    var boxDepth = box.max.z - box.min.z;
+
+
+    for (var i = 0; i < imgData.data.length;) {
+        var x = (i / 4) % img.width;
+        var y = Math.floor((i / 4) / img.width);
+
+        var r = imgData.data[i++];
+        var g = imgData.data[i++];
+        var b = imgData.data[i++];
+        var a = imgData.data[i++];
+
+        if (a > 0.7 * 255) {
+            var wx = (x / img.width) * boxWidth + box.min.x;
+            console.log(y);
+            var wy = (1 - y / img.height) * boxHeight + box.min.y - this._rootNode.position.y;
+            var wz = Math.random() * boxDepth + box.min.z;
+
+            var boid = boids[usedFish];
+            var goal = boid.__goal || (boid.__goal = new qtek.math.Vector3());
+            goal.set(wx, wy, wz);
+            boid.setGoal(goal);
+            boid.setGoalIntensity(10);
+
+            usedFish++;
+            if (usedFish >= boids.length) {
+                break;
+            }
+        }
+    }
+
+    for (var i = usedFish; i < boids.length; i++) {
+        boids[i].setGoal(null);
     }
 };
 

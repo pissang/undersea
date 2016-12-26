@@ -50,10 +50,6 @@ scene.add(plane);
 var fishes = new Fishes();
 scene.add(fishes.getRootNode());
 
-// setTimeout(function () {
-//     fishes.setGoalAround(new qtek.math.Vector3(0, 40, 0), 10);
-// }, 2000)
-
 camera.position.set(0, 60, 80);
 // camera.lookAt(new qtek.math.Vector3(0, 30, 0));
 
@@ -94,20 +90,42 @@ resize();
 
 window.addEventListener('resize', resize);
 
-
 var plane = new qtek.math.Plane();
 var setGoalAround = throttle(function (e) {
+    if (config.text) {
+        return;
+    }
     var v2 = renderer.screenToNdc(e.offsetX, e.offsetY);
     var ray = camera.castRay(v2);
     plane.normal.copy(camera.worldTransform.z);
     plane.distance = 0;
 
     var out = ray.intersectPlane(plane);
-    fishes.setGoalAround(out, 10);
+    fishes.goTo(out, 10);
 }, 500);
 window.addEventListener('mousemove', setGoalAround);
 
+var canvas = document.createElement('canvas');
+canvas.width = 200;
+canvas.height = 50;
+var ctx = canvas.getContext('2d');
+ctx.font = '30px monospace';
+ctx.textBaseline = 'middle';
+ctx.textAlign = 'center';
+
+function textFormation(text) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillText(config.text, canvas.width / 2, canvas.height / 2);
+
+    var box = new qtek.math.BoundingBox();
+    box.min.set(-300, 40, -2);
+    box.max.set(300, 150, 2);
+    fishes.setFormation(canvas, box);
+}
+
 var config = {
+    text: '',
+
     causticsIntensity: 3,
     causticsScale: 1.7,
 
@@ -145,6 +163,9 @@ function update() {
 
 var gui = new dat.GUI();
 gui.remember(config);
+
+gui.add(config, 'text').onChange(textFormation);
+
 gui.add(config, 'fogDensity', 0, 1).onChange(update);
 gui.addColor(config, 'fogColor').onChange(update);
 gui.addColor(config, 'sceneColor').onChange(update);
