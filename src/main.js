@@ -5,6 +5,7 @@ var BlurEffect = require('./BlurEffect');
 var PostProcessPass = require('./PostProcessPass');
 var Fishes = require('./Fishes');
 var Terrain = require('./Terrain');
+var throttle = require('lodash.throttle');
 
 var root = document.getElementById('root');
 
@@ -49,8 +50,12 @@ scene.add(plane);
 var fishes = new Fishes();
 scene.add(fishes.getRootNode());
 
+// setTimeout(function () {
+//     fishes.setGoalAround(new qtek.math.Vector3(0, 40, 0), 10);
+// }, 2000)
+
 camera.position.set(0, 60, 80);
-camera.lookAt(new qtek.math.Vector3(0, 30, 0));
+// camera.lookAt(new qtek.math.Vector3(0, 30, 0));
 
 var causticsLight = causticsEffect.getLight();
 causticsLight.intensity = 1;
@@ -88,6 +93,19 @@ function resize() {
 resize();
 
 window.addEventListener('resize', resize);
+
+
+var plane = new qtek.math.Plane();
+var setGoalAround = throttle(function (e) {
+    var v2 = renderer.screenToNdc(e.offsetX, e.offsetY);
+    var ray = camera.castRay(v2);
+    plane.normal.copy(camera.worldTransform.z);
+    plane.distance = 0;
+
+    var out = ray.intersectPlane(plane);
+    fishes.setGoalAround(out, 10);
+}, 500);
+window.addEventListener('mousemove', setGoalAround);
 
 var config = {
     causticsIntensity: 3,

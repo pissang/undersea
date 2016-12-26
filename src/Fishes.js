@@ -36,7 +36,7 @@ function Fishes() {
                 }
             });
         });
-        for (var i = 0; i < 600; i++) {
+        for (var i = 0; i < 400; i++) {
             var boid = new Boid();
             boid.position.x = Math.random() * 200 - 100;
             boid.position.y = Math.random() * 80 - 40;
@@ -78,6 +78,29 @@ Fishes.prototype.update = function (dTime) {
 
 Fishes.prototype.getRootNode = function () {
     return this._rootNode;
-}
+};
+
+Fishes.prototype.setGoalAround = function (position, radius) {
+    var boids = this._boids;
+    for (var i = 0; i < boids.length; i++) {
+		boid = boids[i];
+        var goal = boid.__goal || (boid.__goal = new qtek.math.Vector3());
+        goal.copy(position);
+        var theta = (Math.random() - 0.5) * Math.PI;
+        var phi = Math.random() * Math.PI * 2;
+
+        var y = Math.sin(theta);
+        var x = Math.cos(theta) * Math.sin(phi);
+        var z = Math.cos(theta) * Math.cos(phi);
+
+        var r = Math.sqrt(Math.random(), 2) * radius;
+        goal.x += x * r;
+        goal.y += y * r - this._rootNode.position.y;
+        goal.z += z * r;
+
+        boid.setGoal(boid.__goal);
+        boid.setGoalIntensity(0.05);
+    }
+};
 
 module.exports = Fishes;
