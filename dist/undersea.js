@@ -34764,7 +34764,7 @@
 	                }
 	            });
 	        });
-	        for (var i = 0; i < 300; i++) {
+	        for (var i = 0; i < 500; i++) {
 	            var boid = new Boid();
 	            boid.position.x = Math.random() * 200 - 100;
 	            boid.position.y = Math.random() * 80 - 40;
