@@ -168,7 +168,7 @@ var config = {
     fogColor1: [36,95,85],
 
     sceneColor: [144,190,200],
-    ambientIntensity: 0.8,
+    ambientIntensity: 0.4,
 
     blurNear: 40,
     blurFar: 150

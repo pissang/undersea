@@ -214,7 +214,7 @@
 	    fogColor1: [36,95,85],
 
 	    sceneColor: [144,190,200],
-	    ambientIntensity: 0.8,
+	    ambientIntensity: 0.4,
 
 	    blurNear: 40,
 	    blurFar: 150
@@ -34764,7 +34764,7 @@
 	                }
 	            });
 	        });
-	        for (var i = 0; i < 500; i++) {
+	        for (var i = 0; i < 300; i++) {
 	            var boid = new Boid();
 	            boid.position.x = Math.random() * 200 - 100;
 	            boid.position.y = Math.random() * 80 - 40;
