@@ -76,7 +76,7 @@
 
 	var scene = new qtek.Scene();
 	var camera = new qtek.camera.Perspective({
-	    far: 500
+	    far: 1000
 	});
 	var control = new qtek.plugin.OrbitControl({
 	    target: camera,
@@ -105,21 +105,21 @@
 	    material: new qtek.StandardMaterial({
 	        diffuseMap: sandTexture,
 	        normalMap: sandNormalTexture,
-	        uvRepeat: [10, 10],
+	        uvRepeat: [20, 20],
 	        linear: true
 	    })
 	});
 	// Don't foget to generate tangents
 	plane.geometry.generateTangents();
-	plane.scale.set(500, 500, 1);
+	plane.scale.set(1000, 1000, 1);
 	plane.rotation.rotateX(-Math.PI / 2);
 	scene.add(plane);
 
 	var fishes = new Fishes();
 	scene.add(fishes.getRootNode());
 
-	camera.position.set(0, 20, 100);
-	camera.lookAt(scene.position);
+	camera.position.set(0, 60, 80);
+	camera.lookAt(new qtek.math.Vector3(0, 30, 0));
 
 	var causticsLight = causticsEffect.getLight();
 	causticsLight.intensity = 2;
@@ -8968,7 +8968,7 @@
 	     * @alias qtek.async.TaskGroup
 	     * @extends qtek.async.Task
 	     */
-	    var TaskGroup = function() {
+	    var TaskGroup = function () {
 
 	        Task.apply(this, arguments);
 
@@ -8979,7 +8979,7 @@
 	        this._rejectedNumber = 0;
 	    };
 
-	    var Ctor = function(){};
+	    var Ctor = function (){};
 	    Ctor.prototype = Task.prototype;
 	    TaskGroup.prototype = new Ctor();
 
@@ -8992,17 +8992,17 @@
 	     * @example
 	     *     // Load texture list
 	     *     var list = ['a.jpg', 'b.jpg', 'c.jpg']
-	     *     var textures = list.map(function(src) {
+	     *     var textures = list.map(function (src) {
 	     *         var texture = new qtek.Texture2D();
 	     *         texture.load(src);
 	     *         return texture;
 	     *     });
 	     *     var taskGroup = new qtek.async.TaskGroup();
-	     *     taskGroup.all(textures).success(function() {
+	     *     taskGroup.all(textures).success(function () {
 	     *         // Do some thing after all textures loaded
 	     *     });
 	     */
-	    TaskGroup.prototype.all = function(tasks) {
+	    TaskGroup.prototype.all = function (tasks) {
 	        var count = 0;
 	        var self = this;
 	        var data = [];
@@ -9010,12 +9010,12 @@
 	        this._fulfilledNumber = 0;
 	        this._rejectedNumber = 0;
 
-	        util.each(tasks, function(task, idx) {
+	        util.each(tasks, function (task, idx) {
 	            if (!task || !task.once) {
 	                return;
 	            }
 	            count++;
-	            task.once('success', function(res) {
+	            task.once('success', function (res) {
 	                count--;
 
 	                self._fulfilledNumber++;
@@ -9030,8 +9030,8 @@
 	                    self.resolve(data);
 	                }
 	            });
-	            task.once('error', function() {
-	                
+	            task.once('error', function () {
+
 	                self._rejectedNumber ++;
 
 	                task._fulfilled = false;
@@ -9041,7 +9041,7 @@
 	            });
 	        });
 	        if (count === 0) {
-	            setTimeout(function() {
+	            setTimeout(function () {
 	                self.resolve(data);
 	            });
 	            return this;
@@ -9053,26 +9053,26 @@
 	     * @param  {Array.<qtek.async.Task>} tasks
 	     * @return {qtek.async.TaskGroup}
 	     */
-	    TaskGroup.prototype.allSettled = function(tasks) {
+	    TaskGroup.prototype.allSettled = function (tasks) {
 	        var count = 0;
 	        var self = this;
 	        var data = [];
 	        if (tasks.length === 0) {
-	            setTimeout(function() {
+	            setTimeout(function () {
 	                self.trigger('success', data);
 	            });
 	            return this;
 	        }
 	        this._tasks = tasks;
 
-	        util.each(tasks, function(task, idx) {
+	        util.each(tasks, function (task, idx) {
 	            if (!task || !task.once) {
 	                return;
 	            }
 	            count++;
-	            task.once('success', function(res) {
+	            task.once('success', function (res) {
 	                count--;
-	                
+
 	                self._fulfilledNumber++;
 
 	                task._fulfilled = true;
@@ -9083,7 +9083,7 @@
 	                    self.resolve(data);
 	                }
 	            });
-	            task.once('error', function(err) {
+	            task.once('error', function (err) {
 	                count--;
 
 	                self._rejectedNumber++;
@@ -9091,7 +9091,7 @@
 	                task._fulfilled = false;
 	                task._rejected = true;
 
-	                // TODO 
+	                // TODO
 	                data[idx] = null;
 	                if (count === 0) {
 	                    self.resolve(data);
@@ -9105,7 +9105,7 @@
 	     * @param  {boolean} [recursive]
 	     * @return {number}
 	     */
-	    TaskGroup.prototype.getFulfilledNumber = function(recursive) {
+	    TaskGroup.prototype.getFulfilledNumber = function (recursive) {
 	        if (recursive) {
 	            var nFulfilled = 0;
 	            for (var i = 0; i < this._tasks.length; i++) {
@@ -9127,7 +9127,7 @@
 	     * @param  {boolean} [recursive]
 	     * @return {number}
 	     */
-	    TaskGroup.prototype.getRejectedNumber = function(recursive) {
+	    TaskGroup.prototype.getRejectedNumber = function (recursive) {
 	        if (recursive) {
 	            var nRejected = 0;
 	            for (var i = 0; i < this._tasks.length; i++) {
@@ -9149,7 +9149,7 @@
 	     * @param  {boolean} [recursive]
 	     * @return {number}
 	     */
-	    TaskGroup.prototype.getSettledNumber = function(recursive) {
+	    TaskGroup.prototype.getSettledNumber = function (recursive) {
 
 	        if (recursive) {
 	            var nSettled = 0;
@@ -9172,7 +9172,7 @@
 	     * @param  {boolean} [recursive]
 	     * @return {number}
 	     */
-	    TaskGroup.prototype.getTaskNumber = function(recursive) {
+	    TaskGroup.prototype.getTaskNumber = function (recursive) {
 	        if (recursive) {
 	            var nTask = 0;
 	            for (var i = 0; i < this._tasks.length; i++) {
@@ -34529,23 +34529,39 @@
 	var qtek = __webpack_require__(1);
 	var Boid = __webpack_require__(163);
 
+	var fishIds = ['01', '02', '05', '07', '12', '15'];
+
 	function Fishes() {
 	    this._rootNode = new qtek.Node();
 	    this._boids = [];
 
 	    var self = this;
 
-	    // Scene objects
-	    var loader = new qtek.loader.GLTF({
-	        rootNode: new qtek.Node()
-	    });
-	    loader.success(function (result) {
-	        result.rootNode.traverse(function (node) {
-	            if (node.material) {
-	                node.material.linear = true;
-	            }
+	    var loaders = fishIds.map(function (fishId) {
+	        var loader = new qtek.loader.GLTF({
+	            rootNode: new qtek.Node()
 	        });
-	        for (var i = 0; i < 700; i++) {
+	        loader.load('asset/model/TropicalFish' + fishId + '.gltf');
+	        return loader;
+	    });
+	    var groupTask = new qtek.async.TaskGroup();
+	    groupTask.all(loaders).success(function (results) {
+	        results.forEach(function (result, idx) {
+	            var normalMap = new qtek.Texture2D();
+	            normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
+	            result.rootNode.traverse(function (node) {
+	                if (node.material) {
+	                    node.geometry.generateTangents();
+	                    node.material.linear = true;
+	                    node.material.roughness = 0.2;
+	                    node.material.normalMap = normalMap;
+	                }
+	                if (fishIds[idx] === '15') {
+	                    node.rotation.rotateY(Math.PI / 2);
+	                }
+	            });
+	        });
+	        for (var i = 0; i < 600; i++) {
 	            var boid = new Boid();
 	            boid.position.x = Math.random() * 200 - 100;
 	            boid.position.y = Math.random() * 80 - 40;
@@ -34553,18 +34569,20 @@
 	            boid.velocity.x = Math.random() * 0.2 - 0.1;
 	            boid.velocity.y = Math.random() * 0.2 - 0.1;
 	            boid.velocity.z = Math.random() * 0.2 - 0.1;
-	            boid.setAvoidWalls( true );
+	            boid.setAvoidWalls(true);
 	            boid.setWorldSize( 260, 100, 160 );
+	            boid.setMaxSteerForce(0.05);
+	            boid.setMaxSpeed(1);
 
-	            var fishClone = result.rootNode.clone();
+	            var randomFish = results[Math.round(Math.random() * (results.length - 1))];
+	            var fishClone = randomFish.rootNode.clone();
 
 	            fishClone.scale.set(0.01, 0.01, 0.01);
 
 	            self._rootNode.add(fishClone);
 	            self._boids.push(boid);
 	        }
-	    });
-	    loader.load('asset/model/TropicalFish12.gltf');
+	    })
 
 	    this._rootNode.position.y = 100;
 	}
@@ -34626,6 +34644,14 @@
 	        _height = height;
 	        _depth = depth;
 
+	    };
+
+	    this.setMaxSpeed = function (speed) {
+	        _maxSpeed = speed;
+	    };
+
+	    this.setMaxSteerForce = function (maxSteerForce) {
+	        _maxSteerForce = maxSteerForce;
 	    };
 
 	    this.run = function ( boids ) {
@@ -34727,10 +34753,10 @@
 
 	        var steer = new Vector3();
 
-	        steer.copy( this.position );
-	        steer.sub( target );
+	        Vector3.copy(steer, this.position );
+	        Vector3.sub(steer, steer, target );
 
-	        steer.scale( 1 / this.position.squaredDistance( target ) );
+	        Vector3.scale(steer, steer, 1 / this.position.squaredDistance( target ) );
 
 	        return steer;
 
@@ -34738,16 +34764,16 @@
 
 	    this.repulse = function ( target ) {
 
-	        var distance = this.position.distance( target );
+	        var distance = Vector3.distance(this.position, target);
 
 	        if ( distance < 150 ) {
 
 	            var steer = new Vector3();
 
 	            Vector3.sub(steer, this.position, target );
-	            steer.scale( 0.5 / distance );
+	            Vector3.scale(steer, steer, 0.5 / distance );
 
-	            _acceleration.add( steer );
+	            Vector3.add(_acceleration, _acceleration, steer );
 
 	        }
 
@@ -34758,7 +34784,7 @@
 	        var steer = new Vector3();
 
 	        Vector3.sub(steer, target, this.position );
-	        steer.scale( amount );
+	        Vector3.scale(steer, steer, amount );
 
 	        return steer;
 
@@ -34775,11 +34801,11 @@
 
 	            boid = boids[ i ];
 
-	            distance = boid.position.distance( this.position );
+	            distance = Vector3.distance(boid.position, this.position );
 
 	            if ( distance > 0 && distance <= _neighborhoodRadius ) {
 
-	                velSum.add( boid.velocity );
+	                Vector3.add(velSum, velSum, boid.velocity );
 	                count++;
 
 	            }
@@ -34788,13 +34814,13 @@
 
 	        if ( count > 0 ) {
 
-	            velSum.scale( 1 /  count );
+	            Vector3.scale(velSum, velSum, 1 /  count );
 
 	            var l = velSum.length();
 
 	            if ( l > _maxSteerForce ) {
 
-	                velSum.scale( _maxSteerForce / l );
+	                Vector3.scale(velSum, velSum, _maxSteerForce / l);
 
 	            }
 
@@ -34816,11 +34842,11 @@
 	            if ( Math.random() > 0.6 ) continue;
 
 	            boid = boids[ i ];
-	            distance = boid.position.distance( this.position );
+	            distance = Vector3.distance(boid.position, this.position);
 
 	            if ( distance > 0 && distance <= _neighborhoodRadius ) {
 
-	                posSum.add( boid.position );
+	                Vector3.add(posSum, posSum, boid.position);
 	                count++;
 
 	            }
@@ -34829,7 +34855,7 @@
 
 	        if ( count > 0 ) {
 
-	            posSum.scale( 1 / count );
+	            Vector3.scale(posSum, posSum, 1 / count);
 
 	        }
 
@@ -34839,7 +34865,7 @@
 
 	        if ( l > _maxSteerForce ) {
 
-	            steer.scale( _maxSteerForce / l );
+	            Vector3.scale(steer, steer, _maxSteerForce / l);
 
 	        }
 
@@ -34858,15 +34884,15 @@
 	            if ( Math.random() > 0.6 ) continue;
 
 	            boid = boids[ i ];
-	            distance = boid.position.distance( this.position );
+	            distance = Vector3.distance(boid.position, this.position );
 
 	            if ( distance > 0 && distance <= _neighborhoodRadius ) {
 
 	                Vector3.sub(repulse, this.position, boid.position);
 
-	                repulse.normalize();
-	                repulse.scale( 1 / distance );
-	                posSum.add( repulse );
+	                Vector3.normalize(repulse, repulse);
+	                Vector3.scale(repulse, repulse, 1 / distance);
+	                Vector3.add(posSum, posSum, repulse);
 
 	            }
 

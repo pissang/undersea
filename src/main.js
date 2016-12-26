@@ -30,7 +30,7 @@ animation.start();
 
 var scene = new qtek.Scene();
 var camera = new qtek.camera.Perspective({
-    far: 500
+    far: 1000
 });
 var control = new qtek.plugin.OrbitControl({
     target: camera,
@@ -59,21 +59,21 @@ var plane = new qtek.Mesh({
     material: new qtek.StandardMaterial({
         diffuseMap: sandTexture,
         normalMap: sandNormalTexture,
-        uvRepeat: [10, 10],
+        uvRepeat: [20, 20],
         linear: true
     })
 });
 // Don't foget to generate tangents
 plane.geometry.generateTangents();
-plane.scale.set(500, 500, 1);
+plane.scale.set(1000, 1000, 1);
 plane.rotation.rotateX(-Math.PI / 2);
 scene.add(plane);
 
 var fishes = new Fishes();
 scene.add(fishes.getRootNode());
 
-camera.position.set(0, 20, 100);
-camera.lookAt(scene.position);
+camera.position.set(0, 60, 80);
+camera.lookAt(new qtek.math.Vector3(0, 30, 0));
 
 var causticsLight = causticsEffect.getLight();
 causticsLight.intensity = 2;

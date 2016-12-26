@@ -1,0 +1,211 @@
+{
+    "accessors": {
+        "attrbute_1": {
+            "bufferView": "bufferView_5",
+            "byteOffset": 0,
+            "byteStride": 12,
+            "count": 260,
+            "max": [
+                186.596725463867,
+                134.837936401367,
+                88.3275299072266,
+                0.0
+            ],
+            "min": [
+                -270.237365722656,
+                -100.070198059082,
+                -76.2931823730469,
+                0.0
+            ],
+            "type": 35665
+        },
+        "attrbute_2": {
+            "bufferView": "bufferView_5",
+            "byteOffset": 3120,
+            "byteStride": 12,
+            "count": 260,
+            "max": [
+                0.86287260055542,
+                0.84535676240921,
+                0.99927830696106,
+                0.0
+            ],
+            "min": [
+                -0.936022996902466,
+                -0.934518337249756,
+                -0.99927830696106,
+                0.0
+            ],
+            "type": 35665
+        },
+        "attrbute_3": {
+            "bufferView": "bufferView_5",
+            "byteOffset": 6240,
+            "byteStride": 8,
+            "count": 260,
+            "max": [
+                0.919912576675415,
+                0.671598136425018
+            ],
+            "min": [
+                0.0210950672626495,
+                0.109460033476353
+            ],
+            "type": 35664
+        },
+        "indices_4": {
+            "bufferView": "bufferView_6",
+            "byteOffset": 0,
+            "count": 1428,
+            "type": 5123
+        }
+    },
+    "animations": {},
+    "asset": {},
+    "bufferViews": {
+        "bufferView_5": {
+            "buffer": "TropicalFish02.bin",
+            "byteLength": 8320,
+            "byteOffset": 0,
+            "target": 34962
+        },
+        "bufferView_6": {
+            "buffer": "TropicalFish02.bin",
+            "byteLength": 2856,
+            "byteOffset": 8320,
+            "target": 34963
+        }
+    },
+    "buffers": {
+        "TropicalFish02.bin": {
+            "byteLength": 11176,
+            "path": "TropicalFish02.bin"
+        }
+    },
+    "cameras": {},
+    "images": {
+        "image_0": {
+            "path": "TropicalFish02.jpg"
+        }
+    },
+    "lights": {},
+    "materials": {
+        "02 - Default": {
+            "instanceTechnique": {
+                "technique": "technique_0",
+                "values": {
+                    "ambient": [
+                        0.588235318660736,
+                        0.588235318660736,
+                        0.588235318660736
+                    ],
+                    "diffuse": "Map #3",
+                    "emission": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "shininess": 1.99999991737042,
+                    "specular": [
+                        0.899999976158142,
+                        0.899999976158142,
+                        0.899999976158142
+                    ],
+                    "transparency": 1
+                }
+            },
+            "name": "02 - Default"
+        }
+    },
+    "meshes": {
+        "TropicalFish02-mesh": {
+            "name": "TropicalFish02-mesh",
+            "primitives": [
+                {
+                    "attributes": {
+                        "NORMAL": "attrbute_2",
+                        "POSITION": "attrbute_1",
+                        "TEXCOORD_0": "attrbute_3"
+                    },
+                    "indices": "indices_4",
+                    "material": "02 - Default"
+                }
+            ]
+        }
+    },
+    "nodes": {
+        "TropicalFish02": {
+            "children": [],
+            "matrix": [
+                0.9999999999999996,
+                0.0,
+                -2.9802322387695346e-08,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                2.9802322387695346e-08,
+                0.0,
+                0.9999999999999996,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0
+            ],
+            "meshes": [
+                "TropicalFish02-mesh"
+            ],
+            "name": "TropicalFish02"
+        }
+    },
+    "samplers": {
+        "sampler_0": {
+            "magFilter": 9729,
+            "minFilter": 9987,
+            "wrapS": 10497,
+            "wrapT": 10497
+        }
+    },
+    "scene": "scene_0",
+    "scenes": {
+        "scene_0": {
+            "nodes": [
+                "TropicalFish02"
+            ]
+        }
+    },
+    "shaders": {},
+    "skins": {},
+    "techniques": {
+        "technique_0": {
+            "parameters": {},
+            "pass": "defaultPass",
+            "passes": {
+                "defaultPass": {
+                    "instanceProgram": {
+                        "attributes": {},
+                        "program": "",
+                        "uniforms": {}
+                    },
+                    "states": {
+                        "blendEnable": false,
+                        "cullFaceEnable": false,
+                        "depthMask": true,
+                        "depthTestEnable": true
+                    }
+                }
+            }
+        }
+    },
+    "textures": {
+        "Map #3": {
+            "format": 6408,
+            "internalFormat": 6408,
+            "sampler": "sampler_0",
+            "source": "image_0",
+            "target": 3553
+        }
+    }
+}

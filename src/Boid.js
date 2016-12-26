@@ -33,6 +33,14 @@ var Boid = function () {
 
     };
 
+    this.setMaxSpeed = function (speed) {
+        _maxSpeed = speed;
+    };
+
+    this.setMaxSteerForce = function (maxSteerForce) {
+        _maxSteerForce = maxSteerForce;
+    };
+
     this.run = function ( boids ) {
 
         if ( _avoidWalls ) {
@@ -132,10 +140,10 @@ var Boid = function () {
 
         var steer = new Vector3();
 
-        steer.copy( this.position );
-        steer.sub( target );
+        Vector3.copy(steer, this.position );
+        Vector3.sub(steer, steer, target );
 
-        steer.scale( 1 / this.position.squaredDistance( target ) );
+        Vector3.scale(steer, steer, 1 / this.position.squaredDistance( target ) );
 
         return steer;
 
@@ -143,16 +151,16 @@ var Boid = function () {
 
     this.repulse = function ( target ) {
 
-        var distance = this.position.distance( target );
+        var distance = Vector3.distance(this.position, target);
 
         if ( distance < 150 ) {
 
             var steer = new Vector3();
 
             Vector3.sub(steer, this.position, target );
-            steer.scale( 0.5 / distance );
+            Vector3.scale(steer, steer, 0.5 / distance );
 
-            _acceleration.add( steer );
+            Vector3.add(_acceleration, _acceleration, steer );
 
         }
 
@@ -163,7 +171,7 @@ var Boid = function () {
         var steer = new Vector3();
 
         Vector3.sub(steer, target, this.position );
-        steer.scale( amount );
+        Vector3.scale(steer, steer, amount );
 
         return steer;
 
@@ -180,11 +188,11 @@ var Boid = function () {
 
             boid = boids[ i ];
 
-            distance = boid.position.distance( this.position );
+            distance = Vector3.distance(boid.position, this.position );
 
             if ( distance > 0 && distance <= _neighborhoodRadius ) {
 
-                velSum.add( boid.velocity );
+                Vector3.add(velSum, velSum, boid.velocity );
                 count++;
 
             }
@@ -193,13 +201,13 @@ var Boid = function () {
 
         if ( count > 0 ) {
 
-            velSum.scale( 1 /  count );
+            Vector3.scale(velSum, velSum, 1 /  count );
 
             var l = velSum.length();
 
             if ( l > _maxSteerForce ) {
 
-                velSum.scale( _maxSteerForce / l );
+                Vector3.scale(velSum, velSum, _maxSteerForce / l);
 
             }
 
@@ -221,11 +229,11 @@ var Boid = function () {
             if ( Math.random() > 0.6 ) continue;
 
             boid = boids[ i ];
-            distance = boid.position.distance( this.position );
+            distance = Vector3.distance(boid.position, this.position);
 
             if ( distance > 0 && distance <= _neighborhoodRadius ) {
 
-                posSum.add( boid.position );
+                Vector3.add(posSum, posSum, boid.position);
                 count++;
 
             }
@@ -234,7 +242,7 @@ var Boid = function () {
 
         if ( count > 0 ) {
 
-            posSum.scale( 1 / count );
+            Vector3.scale(posSum, posSum, 1 / count);
 
         }
 
@@ -244,7 +252,7 @@ var Boid = function () {
 
         if ( l > _maxSteerForce ) {
 
-            steer.scale( _maxSteerForce / l );
+            Vector3.scale(steer, steer, _maxSteerForce / l);
 
         }
 
@@ -263,15 +271,15 @@ var Boid = function () {
             if ( Math.random() > 0.6 ) continue;
 
             boid = boids[ i ];
-            distance = boid.position.distance( this.position );
+            distance = Vector3.distance(boid.position, this.position );
 
             if ( distance > 0 && distance <= _neighborhoodRadius ) {
 
                 Vector3.sub(repulse, this.position, boid.position);
 
-                repulse.normalize();
-                repulse.scale( 1 / distance );
-                posSum.add( repulse );
+                Vector3.normalize(repulse, repulse);
+                Vector3.scale(repulse, repulse, 1 / distance);
+                Vector3.add(posSum, posSum, repulse);
 
             }
 
