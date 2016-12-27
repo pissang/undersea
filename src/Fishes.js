@@ -3,7 +3,7 @@ var Boid = require('./Boid');
 
 var fishIds = ['01', '02', '05', '07', '12', '15'];
 
-function Fishes() {
+function Fishes(cb) {
     this._rootNode = new qtek.Node();
     this._boids = [];
 
@@ -36,15 +36,12 @@ function Fishes() {
                 }
             });
         });
-        for (var i = 0; i < 500; i++) {
+        for (var i = 0; i < 600; i++) {
             var boid = new Boid();
-            boid.position.x = Math.random() * 200 - 100;
-            boid.position.y = Math.random() * 80 - 40;
-            boid.position.z = Math.random() * 120 - 60;
             boid.velocity.x = Math.random() * 0.2 - 0.1;
             boid.velocity.y = Math.random() * 0.2 - 0.1;
-            boid.velocity.z = Math.random() * 0.2 - 0.1;
-            boid.setAvoidWalls(true);
+            boid.velocity.z = Math.random() * 2 - 1;
+            boid.setAvoidWalls(false);
             boid.setWorldSize( 260, 100, 160 );
             boid.setMaxSteerForce(0.05);
             boid.setMaxSpeed(1);
@@ -57,10 +54,26 @@ function Fishes() {
             self._rootNode.add(fishClone);
             self._boids.push(boid);
         }
-    })
+        cb && cb();
+    });
 
     this._rootNode.position.y = 100;
+
 }
+
+Fishes.prototype.randomPositionInBox = function (box) {
+    this._boids.forEach(function (boid) {
+        boid.position.x = Math.random() * (box.max.x - box.min.x) + box.min.x;
+        boid.position.y = Math.random() * (box.max.y - box.min.y) + box.min.y - this._rootNode.position.y;
+        boid.position.z = Math.random() * (box.max.z - box.min.z) + box.min.z;
+    }, this);
+}
+
+Fishes.prototype.setAvoidWalls = function (avoidWalls) {
+    this._boids.forEach(function (boid) {
+        boid.setAvoidWalls(avoidWalls);
+    });
+};
 
 Fishes.prototype.update = function (dTime) {
     var boids = this._boids;
@@ -99,7 +112,7 @@ Fishes.prototype.goTo = function (position, radius) {
         goal.z += z * r;
 
         boid.setGoal(boid.__goal);
-        boid.setGoalIntensity(0.05);
+        boid.setGoalIntensity(0.02);
     }
 };
 

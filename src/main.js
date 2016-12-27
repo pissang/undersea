@@ -27,18 +27,18 @@ tonemappingPass.getShader().enableTexture('texture');
 tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
 
 var lutPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.lut'), true);
-var lutTexture = new qtek.Texture2D({
-    flipY: false,
-    useMipmap: false,
-    minFilter: qtek.Texture.LINEAR,
-    magFilter: qtek.Texture.LINEAR
-});
-lutTexture.load('asset/texture/filmstock_50.png');
-lutPass.setUniform('lookup', lutTexture);
-lutPass.setUniform('texture', tonemappingPass.getTargetTexture());
+// var lutTexture = new qtek.Texture2D({
+//     flipY: false,
+//     useMipmap: false,
+//     minFilter: qtek.Texture.LINEAR,
+//     magFilter: qtek.Texture.LINEAR
+// });
+// lutTexture.load('asset/texture/filmstock_50.png');
+// lutPass.setUniform('lookup', lutTexture);
+// lutPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
 var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
-fxaaPass.setUniform('texture', lutPass.getTargetTexture());
+fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
 var animation = new qtek.animation.Animation();
 animation.start();
@@ -47,9 +47,10 @@ var scene = new qtek.Scene();
 var camera = new qtek.camera.Perspective({
     far: 1000
 });
-var control = new qtek.plugin.OrbitControl({
+var control = new qtek.plugin.FirstPersonControl({
     target: camera,
-    domElement: renderer.canvas
+    domElement: renderer.canvas,
+    sensitivity: 0.4,
 });
 
 var terrain = new Terrain();
@@ -58,11 +59,34 @@ plane.rotation.rotateX(-Math.PI / 2);
 plane.castShadow = false;
 scene.add(plane);
 
-var fishes = new Fishes();
+var fishes = new Fishes(function () {
+    var box = new qtek.math.BoundingBox();
+    box.min.set(-100, 30, 400);
+    box.max.set(100, 100, 100);
+    fishes.randomPositionInBox(box);
+
+    setTimeout(function () {
+        fishes.goTo(new qtek.math.Vector3(0, 50, 0), 30);
+    }, 1000);
+});
 scene.add(fishes.getRootNode());
 
-camera.position.set(0, 60, 80);
-camera.lookAt(new qtek.math.Vector3(0, 30, 0));
+camera.position.set(0, 40, 800);
+
+var lookAtTarget = new qtek.math.Vector3(0, 20, 0);
+var up = new qtek.math.Vector3(0, 1, 0);
+var animator = animation.animate(camera.position)
+    .when(10000, {
+        z: 80
+    })
+    .during(function () {
+        camera.lookAt(lookAtTarget, up);
+    })
+    .done(function () {
+        window.addEventListener('mousemove', setGoalAround);
+        fishes.setAvoidWalls(true);
+    })
+    .start('quadraticOut');
 
 // Coral
 var loader = new qtek.loader.GLTF({
@@ -72,7 +96,7 @@ var loader = new qtek.loader.GLTF({
 loader.success(function (result) {
     result.rootNode.rotation.rotateX(-Math.PI / 2);
     result.rootNode.scale.set(300, 300, 300);
-    result.rootNode.position.set(-10, 10, -10);
+    result.rootNode.position.set(-10, 5, -10);
     scene.add(result.rootNode);
 });
 loader.load('asset/model/coral.gltf');
@@ -83,6 +107,7 @@ causticsLight.position.set(0, 10, 7);
 causticsLight.lookAt(scene.position);
 causticsLight.shadowResolution = 2048;
 causticsLight.shadowCascade = 2;
+causticsLight.cascadeSplitLogFactor = 0.5;
 
 animation.on('frame', function (frameTime) {
     control.update(frameTime);
@@ -95,7 +120,7 @@ animation.on('frame', function (frameTime) {
     // blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
 
     tonemappingPass.render(renderer);
-    lutPass.render(renderer);
+    // lutPass.render(renderer);
     fxaaPass.render(renderer);
     // deferredRenderer.shadowMapPass.renderDebug(renderer);
 });
@@ -131,7 +156,6 @@ var setGoalAround = throttle(function (e) {
     var out = ray.intersectPlane(plane);
     fishes.goTo(out, 10);
 }, 500);
-window.addEventListener('mousemove', setGoalAround);
 
 var canvas = document.createElement('canvas');
 canvas.width = 200;
@@ -152,8 +176,8 @@ function textFormation() {
     var box = new qtek.math.BoundingBox();
     var height = 60;
     var width = height / canvas.height * canvas.width;
-    box.min.set(-width / 2, 20, -2);
-    box.max.set(width / 2, 20 + height, 2);
+    box.min.set(-width / 2, 5, -2);
+    box.max.set(width / 2, 5 + height, 2);
     fishes.setFormation(canvas, box);
 }
 
@@ -163,12 +187,12 @@ var config = {
     causticsIntensity: 3,
     causticsScale: 3,
 
-    fogDensity: 0.2,
+    fogDensity: 0.14,
     fogColor0: [36,95,85],
     fogColor1: [36,95,85],
 
     sceneColor: [144,190,200],
-    ambientIntensity: 0.4,
+    ambientIntensity: 0.2,
 
     blurNear: 40,
     blurFar: 150

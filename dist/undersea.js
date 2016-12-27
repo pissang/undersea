@@ -73,18 +73,18 @@
 	tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
 
 	var lutPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.lut'), true);
-	var lutTexture = new qtek.Texture2D({
-	    flipY: false,
-	    useMipmap: false,
-	    minFilter: qtek.Texture.LINEAR,
-	    magFilter: qtek.Texture.LINEAR
-	});
-	lutTexture.load('asset/texture/filmstock_50.png');
-	lutPass.setUniform('lookup', lutTexture);
-	lutPass.setUniform('texture', tonemappingPass.getTargetTexture());
+	// var lutTexture = new qtek.Texture2D({
+	//     flipY: false,
+	//     useMipmap: false,
+	//     minFilter: qtek.Texture.LINEAR,
+	//     magFilter: qtek.Texture.LINEAR
+	// });
+	// lutTexture.load('asset/texture/filmstock_50.png');
+	// lutPass.setUniform('lookup', lutTexture);
+	// lutPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
 	var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
-	fxaaPass.setUniform('texture', lutPass.getTargetTexture());
+	fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
 	var animation = new qtek.animation.Animation();
 	animation.start();
@@ -93,9 +93,10 @@
 	var camera = new qtek.camera.Perspective({
 	    far: 1000
 	});
-	var control = new qtek.plugin.OrbitControl({
+	var control = new qtek.plugin.FirstPersonControl({
 	    target: camera,
-	    domElement: renderer.canvas
+	    domElement: renderer.canvas,
+	    sensitivity: 0.4,
 	});
 
 	var terrain = new Terrain();
@@ -104,11 +105,34 @@
 	plane.castShadow = false;
 	scene.add(plane);
 
-	var fishes = new Fishes();
+	var fishes = new Fishes(function () {
+	    var box = new qtek.math.BoundingBox();
+	    box.min.set(-100, 30, 400);
+	    box.max.set(100, 100, 100);
+	    fishes.randomPositionInBox(box);
+
+	    setTimeout(function () {
+	        fishes.goTo(new qtek.math.Vector3(0, 50, 0), 30);
+	    }, 1000);
+	});
 	scene.add(fishes.getRootNode());
 
-	camera.position.set(0, 60, 80);
-	camera.lookAt(new qtek.math.Vector3(0, 30, 0));
+	camera.position.set(0, 40, 800);
+
+	var lookAtTarget = new qtek.math.Vector3(0, 20, 0);
+	var up = new qtek.math.Vector3(0, 1, 0);
+	var animator = animation.animate(camera.position)
+	    .when(10000, {
+	        z: 80
+	    })
+	    .during(function () {
+	        camera.lookAt(lookAtTarget, up);
+	    })
+	    .done(function () {
+	        window.addEventListener('mousemove', setGoalAround);
+	        fishes.setAvoidWalls(true);
+	    })
+	    .start('quadraticOut');
 
 	// Coral
 	var loader = new qtek.loader.GLTF({
@@ -118,7 +142,7 @@
 	loader.success(function (result) {
 	    result.rootNode.rotation.rotateX(-Math.PI / 2);
 	    result.rootNode.scale.set(300, 300, 300);
-	    result.rootNode.position.set(-10, 10, -10);
+	    result.rootNode.position.set(-10, 5, -10);
 	    scene.add(result.rootNode);
 	});
 	loader.load('asset/model/coral.gltf');
@@ -129,6 +153,7 @@
 	causticsLight.lookAt(scene.position);
 	causticsLight.shadowResolution = 2048;
 	causticsLight.shadowCascade = 2;
+	causticsLight.cascadeSplitLogFactor = 0.5;
 
 	animation.on('frame', function (frameTime) {
 	    control.update(frameTime);
@@ -141,7 +166,7 @@
 	    // blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
 
 	    tonemappingPass.render(renderer);
-	    lutPass.render(renderer);
+	    // lutPass.render(renderer);
 	    fxaaPass.render(renderer);
 	    // deferredRenderer.shadowMapPass.renderDebug(renderer);
 	});
@@ -177,7 +202,6 @@
 	    var out = ray.intersectPlane(plane);
 	    fishes.goTo(out, 10);
 	}, 500);
-	window.addEventListener('mousemove', setGoalAround);
 
 	var canvas = document.createElement('canvas');
 	canvas.width = 200;
@@ -198,8 +222,8 @@
 	    var box = new qtek.math.BoundingBox();
 	    var height = 60;
 	    var width = height / canvas.height * canvas.width;
-	    box.min.set(-width / 2, 20, -2);
-	    box.max.set(width / 2, 20 + height, 2);
+	    box.min.set(-width / 2, 5, -2);
+	    box.max.set(width / 2, 5 + height, 2);
 	    fishes.setFormation(canvas, box);
 	}
 
@@ -209,12 +233,12 @@
 	    causticsIntensity: 3,
 	    causticsScale: 3,
 
-	    fogDensity: 0.2,
+	    fogDensity: 0.14,
 	    fogColor0: [36,95,85],
 	    fogColor1: [36,95,85],
 
 	    sceneColor: [144,190,200],
-	    ambientIntensity: 0.4,
+	    ambientIntensity: 0.2,
 
 	    blurNear: 40,
 	    blurFar: 150
@@ -634,7 +658,7 @@
 	            this._clips = [];
 	        },
 	        /**
-	         * Create a deferred animating object
+	         * Create a animator
 	         * @param  {Object} target
 	         * @param  {Object} [options]
 	         * @param  {boolean} [options.loop]
@@ -645,15 +669,15 @@
 	         */
 	        animate: function(target, options) {
 	            options = options || {};
-	            var deferred = new Animator(
+	            var animator = new Animator(
 	                target,
 	                options.loop,
 	                options.getter,
 	                options.setter,
 	                options.interpolater
 	            );
-	            deferred.animation = this;
-	            return deferred;
+	            animator.animation = this;
+	            return animator;
 	        }
 	    });
 
@@ -17755,7 +17779,8 @@
 	        'WEBGL_depth_texture',
 	        'EXT_texture_filter_anisotropic',
 	        'EXT_shader_texture_lod',
-	        'WEBGL_draw_buffers'
+	        'WEBGL_draw_buffers',
+	        'EXT_frag_depth'
 	    ];
 
 	    var PARAMETER_NAMES = [
@@ -28392,7 +28417,7 @@
 /***/ function(module, exports) {
 
 	
-	module.exports = "// HDR Pipeline\n@export qtek.compositor.hdr.bright\n\nuniform sampler2D texture;\n\nuniform float threshold : 1;\nuniform float scale : 1.0;\n\nuniform vec2 textureSize: [512, 512];\n\nvarying vec2 v_Texcoord;\n\nconst vec3 lumWeight = vec3(0.2125, 0.7154, 0.0721);\n\n@import qtek.util.rgbm\n\n\n// 3-tap median filter\nvec3 median(vec3 a, vec3 b, vec3 c)\n{\n    return a + b + c - min(min(a, b), c) - max(max(a, b), c);\n}\n\nvoid main()\n{\n    vec3 texel = decodeHDR(texture2D(texture, v_Texcoord)).rgb;\n\n#ifdef ANTI_FLICKER\n    // Use median filter to reduce noise\n    // https://github.com/keijiro/KinoBloom/blob/master/Assets/Kino/Bloom/Shader/Bloom.cginc#L96\n    vec3 d = 1.0 / textureSize.xyx * vec3(1.0, 1.0, 0.0);\n\n    vec3 s1 = decodeHDR(texture2D(texture, v_Texcoord - d.xz)).rgb;\n    vec3 s2 = decodeHDR(texture2D(texture, v_Texcoord + d.xz)).rgb;\n    vec3 s3 = decodeHDR(texture2D(texture, v_Texcoord - d.zy)).rgb;\n    vec3 s4 = decodeHDR(texture2D(texture, v_Texcoord + d.zy)).rgb;\n    texel = median(median(texel, s1, s2), s3, s4);\n\n#endif\n\n    float lum = dot(texel, lumWeight);\n    if (lum > threshold)\n    {\n        gl_FragColor.rgb = texel * scale;\n    }\n    else\n    {\n        gl_FragColor.rgb = vec3(0.0);\n    }\n    gl_FragColor.a = 1.0;\n\n    gl_FragColor = encodeHDR(gl_FragColor);\n}\n@end\n\n@export qtek.compositor.hdr.log_lum\n\nvarying vec2 v_Texcoord;\n\nuniform sampler2D texture;\n\nconst vec3 w = vec3(0.2125, 0.7154, 0.0721);\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    vec4 tex = decodeHDR(texture2D(texture, v_Texcoord));\n    float luminance = dot(tex.rgb, w);\n    luminance = log(luminance + 0.001);\n\n    gl_FragColor = encodeHDR(vec4(vec3(luminance), 1.0));\n}\n\n@end\n\n@export qtek.compositor.hdr.lum_adaption\nvarying vec2 v_Texcoord;\n\nuniform sampler2D adaptedLum;\nuniform sampler2D currentLum;\n\nuniform float frameTime : 0.02;\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    float fAdaptedLum = decodeHDR(texture2D(adaptedLum, vec2(0.5, 0.5))).r;\n    float fCurrentLum = exp(encodeHDR(texture2D(currentLum, vec2(0.5, 0.5))).r);\n\n    fAdaptedLum += (fCurrentLum - fAdaptedLum) * (1.0 - pow(0.98, 30.0 * frameTime));\n    gl_FragColor = encodeHDR(vec4(vec3(fAdaptedLum), 1.0));\n}\n@end\n\n// Tone mapping with gamma correction\n// http://filmicgames.com/archives/75\n@export qtek.compositor.hdr.tonemapping\n\nuniform sampler2D texture;\nuniform sampler2D bloom;\nuniform sampler2D lensflare;\nuniform sampler2D lensdirt;\n\nuniform sampler2D lum;\n\nuniform float exposure : 1.0;\nuniform float bloomIntensity : 0.25;\n\nvarying vec2 v_Texcoord;\n\nconst vec3 whiteScale = vec3(11.2);\n\nvec3 uncharted2ToneMap(vec3 x)\n{\n    const float A = 0.22;   // Shoulder Strength\n    const float B = 0.30;   // Linear Strength\n    const float C = 0.10;   // Linear Angle\n    const float D = 0.20;   // Toe Strength\n    const float E = 0.01;   // Toe Numerator\n    const float F = 0.30;   // Toe Denominator\n\n    return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;\n}\n\nvec3 filmicToneMap(vec3 color)\n{\n    vec3 x = max(vec3(0.0), color - 0.004);\n    return (x*(6.2*x+0.5))/(x*(6.2*x+1.7)+0.06);\n}\n\nvec3 ACESToneMapping(vec3 color)\n{\n    const float A = 2.51;\n    const float B = 0.03;\n    const float C = 2.43;\n    const float D = 0.59;\n    const float E = 0.14;\n    return (color * (A * color + B)) / (color * (C * color + D) + E);\n}\n\nfloat eyeAdaption(float fLum)\n{\n    return mix(0.2, fLum, 0.5);\n}\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    vec3 tex = vec3(0.0);\n    float a = 1.0;\n#ifdef TEXTURE_ENABLED\n    vec4 res = decodeHDR(texture2D(texture, v_Texcoord));\n    a = res.a;\n    tex = res.rgb;\n#endif\n\n#ifdef BLOOM_ENABLED\n    tex += decodeHDR(texture2D(bloom, v_Texcoord)).rgb * bloomIntensity;\n#endif\n\n#ifdef LENSFLARE_ENABLED\n    tex += decodeHDR(texture2D(lensflare, v_Texcoord)).rgb * texture2D(lensdirt, v_Texcoord).rgb;\n#endif\n\n// Adjust exposure\n// From KlayGE\n#ifdef LUM_ENABLED\n    float fLum = texture2D(lum, vec2(0.5, 0.5)).r;\n    float adaptedLumDest = 3.0 / (max(0.1, 1.0 + 10.0*eyeAdaption(fLum)));\n    float exposureBias = adaptedLumDest * exposure;\n#else\n    float exposureBias = exposure;\n#endif\n    tex *= exposureBias;\n\n    // Tone mapping\n    vec3 color = uncharted2ToneMap(tex) / uncharted2ToneMap(whiteScale);\n    // vec3 color = filmicToneMap(tex);\n    // vec3 color = ACESToneMapping(tex);\n\n    color = pow(color, vec3(1.0 / 2.2));\n\n    gl_FragColor = encodeHDR(vec4(color, a));\n\n#ifdef DEBUG\n    // Debug output original\n    #if DEBUG == 1\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(texture, v_Texcoord)));\n    // Debug output bloom\n    #elif DEBUG == 2\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(bloom, v_Texcoord)).rgb * bloomIntensity);\n    // Debug output lensflare\n    #elif DEBUG == 3\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(lensflare, v_Texcoord)));\n    #endif\n#endif\n}\n\n@end";
+	module.exports = "// HDR Pipeline\n@export qtek.compositor.hdr.bright\n\nuniform sampler2D texture;\n\nuniform float threshold : 1;\nuniform float scale : 1.0;\n\nuniform vec2 textureSize: [512, 512];\n\nvarying vec2 v_Texcoord;\n\nconst vec3 lumWeight = vec3(0.2125, 0.7154, 0.0721);\n\n@import qtek.util.rgbm\n\n\n// 3-tap median filter\nvec3 median(vec3 a, vec3 b, vec3 c)\n{\n    return a + b + c - min(min(a, b), c) - max(max(a, b), c);\n}\n\nvoid main()\n{\n    vec3 texel = decodeHDR(texture2D(texture, v_Texcoord)).rgb;\n\n#ifdef ANTI_FLICKER\n    // Use median filter to reduce noise\n    // https://github.com/keijiro/KinoBloom/blob/master/Assets/Kino/Bloom/Shader/Bloom.cginc#L96\n    vec3 d = 1.0 / textureSize.xyx * vec3(1.0, 1.0, 0.0);\n\n    vec3 s1 = decodeHDR(texture2D(texture, v_Texcoord - d.xz)).rgb;\n    vec3 s2 = decodeHDR(texture2D(texture, v_Texcoord + d.xz)).rgb;\n    vec3 s3 = decodeHDR(texture2D(texture, v_Texcoord - d.zy)).rgb;\n    vec3 s4 = decodeHDR(texture2D(texture, v_Texcoord + d.zy)).rgb;\n    texel = median(median(texel, s1, s2), s3, s4);\n\n#endif\n\n    float lum = dot(texel, lumWeight);\n    if (lum > threshold)\n    {\n        gl_FragColor.rgb = texel * scale;\n    }\n    else\n    {\n        gl_FragColor.rgb = vec3(0.0);\n    }\n    gl_FragColor.a = 1.0;\n\n    gl_FragColor = encodeHDR(gl_FragColor);\n}\n@end\n\n@export qtek.compositor.hdr.log_lum\n\nvarying vec2 v_Texcoord;\n\nuniform sampler2D texture;\n\nconst vec3 w = vec3(0.2125, 0.7154, 0.0721);\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    vec4 tex = decodeHDR(texture2D(texture, v_Texcoord));\n    float luminance = dot(tex.rgb, w);\n    luminance = log(luminance + 0.001);\n\n    gl_FragColor = encodeHDR(vec4(vec3(luminance), 1.0));\n}\n\n@end\n\n@export qtek.compositor.hdr.lum_adaption\nvarying vec2 v_Texcoord;\n\nuniform sampler2D adaptedLum;\nuniform sampler2D currentLum;\n\nuniform float frameTime : 0.02;\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    float fAdaptedLum = decodeHDR(texture2D(adaptedLum, vec2(0.5, 0.5))).r;\n    float fCurrentLum = exp(encodeHDR(texture2D(currentLum, vec2(0.5, 0.5))).r);\n\n    fAdaptedLum += (fCurrentLum - fAdaptedLum) * (1.0 - pow(0.98, 30.0 * frameTime));\n    gl_FragColor = encodeHDR(vec4(vec3(fAdaptedLum), 1.0));\n}\n@end\n\n// Tone mapping with gamma correction\n// http://filmicgames.com/archives/75\n@export qtek.compositor.hdr.tonemapping\n\nuniform sampler2D texture;\nuniform sampler2D bloom;\nuniform sampler2D lensflare;\nuniform sampler2D lensdirt;\n\nuniform sampler2D lum;\n\nuniform float exposure : 1.0;\nuniform float bloomIntensity : 0.25;\n\nvarying vec2 v_Texcoord;\n\nconst vec3 whiteScale = vec3(11.2);\n\nvec3 uncharted2ToneMap(vec3 x)\n{\n    const float A = 0.22;   // Shoulder Strength\n    const float B = 0.30;   // Linear Strength\n    const float C = 0.10;   // Linear Angle\n    const float D = 0.20;   // Toe Strength\n    const float E = 0.01;   // Toe Numerator\n    const float F = 0.30;   // Toe Denominator\n\n    return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;\n}\n\nvec3 filmicToneMap(vec3 color)\n{\n    vec3 x = max(vec3(0.0), color - 0.004);\n    return (x*(6.2*x+0.5))/(x*(6.2*x+1.7)+0.06);\n}\n\nvec3 ACESToneMapping(vec3 color)\n{\n    const float A = 2.51;\n    const float B = 0.03;\n    const float C = 2.43;\n    const float D = 0.59;\n    const float E = 0.14;\n    return (color * (A * color + B)) / (color * (C * color + D) + E);\n}\n\nfloat eyeAdaption(float fLum)\n{\n    return mix(0.2, fLum, 0.5);\n}\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    vec3 tex = vec3(0.0);\n    float a = 1.0;\n#ifdef TEXTURE_ENABLED\n    vec4 res = decodeHDR(texture2D(texture, v_Texcoord));\n    a = res.a;\n    tex = res.rgb;\n#endif\n\n#ifdef BLOOM_ENABLED\n    tex += decodeHDR(texture2D(bloom, v_Texcoord)).rgb * bloomIntensity;\n#endif\n\n#ifdef LENSFLARE_ENABLED\n    tex += decodeHDR(texture2D(lensflare, v_Texcoord)).rgb * texture2D(lensdirt, v_Texcoord).rgb;\n#endif\n\n// Adjust exposure\n// From KlayGE\n#ifdef LUM_ENABLED\n    float fLum = texture2D(lum, vec2(0.5, 0.5)).r;\n    float adaptedLumDest = 3.0 / (max(0.1, 1.0 + 10.0*eyeAdaption(fLum)));\n    float exposureBias = adaptedLumDest * exposure;\n#else\n    float exposureBias = exposure;\n#endif\n    tex *= exposureBias;\n\n    // Tone mapping\n    // vec3 color = uncharted2ToneMap(tex) / uncharted2ToneMap(whiteScale);\n    // vec3 color = filmicToneMap(tex);\n    vec3 color = ACESToneMapping(tex);\n\n    color = pow(color, vec3(1.0 / 2.2));\n\n    gl_FragColor = encodeHDR(vec4(color, a));\n\n#ifdef DEBUG\n    // Debug output original\n    #if DEBUG == 1\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(texture, v_Texcoord)));\n    // Debug output bloom\n    #elif DEBUG == 2\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(bloom, v_Texcoord)).rgb * bloomIntensity);\n    // Debug output lensflare\n    #elif DEBUG == 3\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(lensflare, v_Texcoord)));\n    #endif\n#endif\n}\n\n@end";
 
 
 /***/ },
@@ -32125,10 +32150,24 @@
 	        },
 
 	        _keyUp: function(e) {
-	            this._moveForward = false;
-	            this._moveBackward = false;
-	            this._moveLeft = false;
-	            this._moveRight = false;
+	            switch(e.keyCode) {
+	                case 87: //w
+	                case 37: //up arrow
+	                    this._moveForward = false;
+	                    break;
+	                case 83: //s
+	                case 40: //down arrow
+	                    this._moveBackward = false;
+	                    break;
+	                case 65: //a
+	                case 37: //left arrow
+	                    this._moveLeft = false;
+	                    break;
+	                case 68: //d
+	                case 39: //right arrow
+	                    this._moveRight = false;
+	                    break;
+	            }
 	        }
 	    });
 
@@ -34731,7 +34770,7 @@
 
 	var fishIds = ['01', '02', '05', '07', '12', '15'];
 
-	function Fishes() {
+	function Fishes(cb) {
 	    this._rootNode = new qtek.Node();
 	    this._boids = [];
 
@@ -34764,15 +34803,12 @@
 	                }
 	            });
 	        });
-	        for (var i = 0; i < 500; i++) {
+	        for (var i = 0; i < 600; i++) {
 	            var boid = new Boid();
-	            boid.position.x = Math.random() * 200 - 100;
-	            boid.position.y = Math.random() * 80 - 40;
-	            boid.position.z = Math.random() * 120 - 60;
 	            boid.velocity.x = Math.random() * 0.2 - 0.1;
 	            boid.velocity.y = Math.random() * 0.2 - 0.1;
-	            boid.velocity.z = Math.random() * 0.2 - 0.1;
-	            boid.setAvoidWalls(true);
+	            boid.velocity.z = Math.random() * 2 - 1;
+	            boid.setAvoidWalls(false);
 	            boid.setWorldSize( 260, 100, 160 );
 	            boid.setMaxSteerForce(0.05);
 	            boid.setMaxSpeed(1);
@@ -34785,10 +34821,26 @@
 	            self._rootNode.add(fishClone);
 	            self._boids.push(boid);
 	        }
-	    })
+	        cb && cb();
+	    });
 
 	    this._rootNode.position.y = 100;
+
 	}
+
+	Fishes.prototype.randomPositionInBox = function (box) {
+	    this._boids.forEach(function (boid) {
+	        boid.position.x = Math.random() * (box.max.x - box.min.x) + box.min.x;
+	        boid.position.y = Math.random() * (box.max.y - box.min.y) + box.min.y - this._rootNode.position.y;
+	        boid.position.z = Math.random() * (box.max.z - box.min.z) + box.min.z;
+	    }, this);
+	}
+
+	Fishes.prototype.setAvoidWalls = function (avoidWalls) {
+	    this._boids.forEach(function (boid) {
+	        boid.setAvoidWalls(avoidWalls);
+	    });
+	};
 
 	Fishes.prototype.update = function (dTime) {
 	    var boids = this._boids;
@@ -34827,7 +34879,7 @@
 	        goal.z += z * r;
 
 	        boid.setGoal(boid.__goal);
-	        boid.setGoalIntensity(0.05);
+	        boid.setGoalIntensity(0.02);
 	    }
 	};
 
