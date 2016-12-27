@@ -144,6 +144,17 @@
 	    result.rootNode.scale.set(300, 300, 300);
 	    result.rootNode.position.set(-10, 5, -10);
 	    scene.add(result.rootNode);
+
+	    result.rootNode.traverse(function (mesh) {
+	        if (mesh.material) {
+	            mesh.material.linear = true;
+	            if (mesh.material.diffuseMap) {
+	                mesh.material.diffuseMap.wrapS = qtek.Texture.REPEAT;
+	                mesh.material.diffuseMap.wrapT = qtek.Texture.REPEAT;
+	                mesh.material.diffuseMap.dirty();
+	            }
+	        }
+	    });
 	});
 	loader.load('asset/model/coral.gltf');
 
@@ -207,7 +218,7 @@
 	canvas.width = 200;
 	canvas.height = 30;
 	var ctx = canvas.getContext('2d');
-
+	ctx.fillStyle = '#fff';
 	function textFormation() {
 	    ctx.textBaseline = 'top';
 	    ctx.textAlign = 'left';
