@@ -11,7 +11,8 @@ var stereoCamera = new qtek.vr.StereoCamera();
 var root = document.getElementById('root');
 
 var renderer = new qtek.Renderer({
-    // devicePixelRatio: 1
+    devicePixelRatio: 2,
+    preserveDrawingBuffer: true
 });
 
 root.appendChild(renderer.canvas);
@@ -55,36 +56,37 @@ var plane = terrain.getRootNode();
 plane.rotation.rotateX(-Math.PI / 2);
 plane.castShadow = false;
 scene.add(plane);
+scene.scale.set(0.1, 0.1, 0.1);
 
 var fishes = new Fishes(function () {
     var box = new qtek.math.BoundingBox();
-    box.min.set(-100, 30, 400);
-    box.max.set(100, 100, 100);
+    box.min.set(-20, 30, -10);
+    box.max.set(20, 40, 10);
     fishes.randomPositionInBox(box);
 
-    setTimeout(function () {
-        fishes.goTo(new qtek.math.Vector3(0, 50, 0), 30);
-    }, 1000);
+    // setTimeout(function () {
+    //     fishes.goTo(new qtek.math.Vector3(0, 50, 0), 30);
+    // }, 1000);
 });
 scene.add(fishes.getRootNode());
 
-camera.position.set(0, 30, 800);
+camera.position.set(0, 3, 8);
 
 var lookAtTarget = new qtek.math.Vector3(0, 25, 0);
-var up = new qtek.math.Vector3(0, 1, 0);
-var animator = animation.animate(camera.position)
-    .when(10000, {
-        y: 15,
-        z: 80
-    })
-    .during(function () {
-        camera.lookAt(lookAtTarget, up);
-    })
-    .done(function () {
-        window.addEventListener('mousemove', setGoalAround);
-        fishes.setAvoidWalls(true);
-    })
-    .start('quadraticOut');
+// var up = new qtek.math.Vector3(0, 1, 0);
+// var animator = animation.animate(camera.position)
+//     .when(10000, {
+//         y: 15,
+//         z: 80
+//     })
+//     .during(function () {
+//         camera.lookAt(lookAtTarget, up);
+//     })
+//     .done(function () {
+//         window.addEventListener('mousemove', setGoalAround);
+//         fishes.setAvoidWalls(true);
+//     })
+//     .start('quadraticOut');
 
 // Coral
 var loader = new qtek.loader.GLTF({
@@ -104,11 +106,13 @@ loader.success(function (result) {
                 mesh.material.diffuseMap.wrapS = qtek.Texture.REPEAT;
                 mesh.material.diffuseMap.wrapT = qtek.Texture.REPEAT;
                 mesh.material.diffuseMap.dirty();
+                // FIXME
+                mesh.material.normalMap = null;
             }
         }
     });
 });
-// loader.load('asset/model/coral.gltf');
+loader.load('asset/model/coral.gltf');
 
 function start(vrDisplay) {
     var causticsLight = causticsEffect.getLight();
@@ -121,12 +125,12 @@ function start(vrDisplay) {
     causticsLight.cascadeSplitLogFactor = 0.5;
 
 
-    causticsLight.castShadow = !vrDisplay;
+    // causticsLight.castShadow = !vrDisplay;
 
     var control;
     if (!vrDisplay) {
 
-        control = new qtek.plugin.FirstPersonControl({
+        control = new qtek.plugin.OrbitControl({
             target: camera,
             domElement: renderer.canvas,
             sensitivity: 0.2,
@@ -157,13 +161,13 @@ function start(vrDisplay) {
 
         causticsEffect.update(frameTime / 1000);
 
+        camera.update();
         if (vrDisplay) {
 
-            stereoCamera.updateFromVRDisplay(vrDisplay);
+            stereoCamera.updateFromVRDisplay(vrDisplay, camera);
 
         }
         else {
-            camera.update();
             stereoCamera.updateFromCamera(camera, 100, 1, 0.64);
         }
 
@@ -171,6 +175,10 @@ function start(vrDisplay) {
         renderEye(stereoCamera.getLeftCamera(), true);
         renderer.setViewport(renderer.getWidth() / 2, 0, renderer.getWidth() / 2, renderer.getHeight());
         renderEye(stereoCamera.getRightCamera());
+
+        if (vrDisplay) {
+            vrDisplay.submitFrame();
+        }
     });
 
     resize();
@@ -244,7 +252,7 @@ var config = {
     text: '',
 
     causticsIntensity: 3,
-    causticsScale: 3,
+    causticsScale: 0.2,
 
     fogDensity: 0.14,
     fogColor0: [36,95,85],
@@ -295,8 +303,8 @@ function renderUI(vrDisplay) {
         gui.addColor(config, 'fogColor0').onChange(update);
         gui.addColor(config, 'fogColor1').onChange(update);
         gui.addColor(config, 'sceneColor').onChange(update);
-        gui.add(config, 'causticsIntensity', 0, 4).onChange(update);
-        // gui.add(config, 'causticsScale', 0, 8).onChange(update);
+        gui.add(config, 'causticsIntensity', 0, 10).onChange(update);
+        gui.add(config, 'causticsScale', 0, 1).onChange(update);
         gui.add(config, 'ambientIntensity', 0, 1).onChange(update);
 
         // gui.add(config, 'blurNear', 0, 200).onChange(update);
@@ -312,7 +320,7 @@ if (navigator.getVRDisplays) {
         if (displays.length > 0)  {
             var vrDisplay = displays[0];
             vrDisplay.requestPresent({
-                // source: renderer.canvas
+                source: renderer.canvas
             }).then(function () {
                 start(vrDisplay);
             }).catch(function () {
