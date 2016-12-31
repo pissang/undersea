@@ -29,6 +29,8 @@ tonemappingPass.getShader().disableTexturesAll();
 tonemappingPass.getShader().enableTexture('texture');
 tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
 
+fogEffect.setParameter('range', 4);
+
 var lutPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.lut'), true);
 // var lutTexture = new qtek.Texture2D({
 //     flipY: false,
@@ -64,6 +66,7 @@ var fishes = new Fishes(function () {
     box.max.set(20, 40, 10);
     fishes.randomPositionInBox(box);
 
+    fishes.setWorldSize(100, 100, 100);
     // setTimeout(function () {
     //     fishes.goTo(new qtek.math.Vector3(0, 50, 0), 30);
     // }, 1000);

@@ -67,12 +67,20 @@ Fishes.prototype.randomPositionInBox = function (box) {
         boid.position.y = Math.random() * (box.max.y - box.min.y) + box.min.y - this._rootNode.position.y;
         boid.position.z = Math.random() * (box.max.z - box.min.z) + box.min.z;
     }, this);
-}
+};
 
-Fishes.prototype.setAvoidWalls = function (avoidWalls) {
-    this._boids.forEach(function (boid) {
-        boid.setAvoidWalls(avoidWalls);
-    });
+Fishes.prototype.setWorldSize = function (width, height, depth) {
+    if (width && height && depth) {
+        this._boids.forEach(function (boid) {
+            boid.setWorldSize(width, height, depth);
+            boid.setAvoidWalls(true);
+        });
+    }
+    else {
+        this._boids.forEach(function (boid) {
+            boid.setAvoidWalls(false);
+        });
+    }
 };
 
 Fishes.prototype.update = function (dTime) {

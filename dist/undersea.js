@@ -75,6 +75,8 @@
 	tonemappingPass.getShader().enableTexture('texture');
 	tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
 
+	fogEffect.setParameter('range', 4);
+
 	var lutPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.lut'), true);
 	// var lutTexture = new qtek.Texture2D({
 	//     flipY: false,
@@ -110,6 +112,7 @@
 	    box.max.set(20, 40, 10);
 	    fishes.randomPositionInBox(box);
 
+	    fishes.setWorldSize(100, 100, 100);
 	    // setTimeout(function () {
 	    //     fishes.goTo(new qtek.math.Vector3(0, 50, 0), 30);
 	    // }, 1000);
@@ -35180,12 +35183,20 @@
 	        boid.position.y = Math.random() * (box.max.y - box.min.y) + box.min.y - this._rootNode.position.y;
 	        boid.position.z = Math.random() * (box.max.z - box.min.z) + box.min.z;
 	    }, this);
-	}
+	};
 
-	Fishes.prototype.setAvoidWalls = function (avoidWalls) {
-	    this._boids.forEach(function (boid) {
-	        boid.setAvoidWalls(avoidWalls);
-	    });
+	Fishes.prototype.setWorldSize = function (width, height, depth) {
+	    if (width && height && depth) {
+	        this._boids.forEach(function (boid) {
+	            boid.setWorldSize(width, height, depth);
+	            boid.setAvoidWalls(true);
+	        });
+	    }
+	    else {
+	        this._boids.forEach(function (boid) {
+	            boid.setAvoidWalls(false);
+	        });
+	    }
 	};
 
 	Fishes.prototype.update = function (dTime) {
