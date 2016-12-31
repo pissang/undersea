@@ -37,14 +37,13 @@ function Fishes(cb) {
                 }
             });
         });
-        for (var i = 0; i < 100; i++) {
+        for (var i = 0; i < 200; i++) {
             var boid = new Boid();
             boid.velocity.x = Math.random() * 0.2 - 0.1;
             boid.velocity.y = Math.random() * 0.2 - 0.1;
             boid.velocity.z = Math.random() * 2 - 1;
             boid.setAvoidWalls(false);
-            boid.setWorldSize( 260, 100, 160 );
-            boid.setMaxSteerForce(0.05);
+            boid.setMaxSteerForce(0.1);
             boid.setMaxSpeed(1);
 
             var randomFish = results[Math.round(Math.random() * (results.length - 1))];
@@ -58,8 +57,6 @@ function Fishes(cb) {
         cb && cb();
     });
 
-    this._rootNode.position.y = 100;
-
 }
 
 Fishes.prototype.randomPositionInBox = function (box) {
@@ -70,7 +67,12 @@ Fishes.prototype.randomPositionInBox = function (box) {
     }, this);
 };
 
-Fishes.prototype.setWorldSize = function (width, height, depth) {
+Fishes.prototype.setWorldSize = function (box) {
+
+    var width = box.max.x - box.min.x;
+    var height = box.max.y - box.min.y;
+    var depth = box.max.z - box.min.z;
+
     if (width && height && depth) {
         this._boids.forEach(function (boid) {
             boid.setWorldSize(width, height, depth);
@@ -82,6 +84,10 @@ Fishes.prototype.setWorldSize = function (width, height, depth) {
             boid.setAvoidWalls(false);
         });
     }
+
+    // PENDING
+    this._rootNode.position.y = height + box.min.y;
+    // this._rootNode.position.z = box.min.z;
 };
 
 Fishes.prototype.update = function (dTime) {

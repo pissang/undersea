@@ -85,7 +85,7 @@ Terrain.prototype.updateHeightmap = function (opt) {
 
         var idx = (y * width + x) * 4;
         var r = heightData[idx];
-        pos[2] = ((r / 255 - 0.5) * 10 + 0.5) * opt.maxHeight;
+        pos[2] = ((r / 255 - 0.5) * 4 + 0.5) * opt.maxHeight;
 
         positions.set(i, pos);
     }

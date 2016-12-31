@@ -63,18 +63,19 @@ scene.scale.set(0.1, 0.1, 0.1);
 
 var fishes = new Fishes(function () {
     var box = new qtek.math.BoundingBox();
-    box.min.set(-20, 30, -10);
-    box.max.set(20, 40, 10);
+    box.min.set(-60, 0, -60);
+    box.max.set(60, 40, 60);
     fishes.randomPositionInBox(box);
 
-    fishes.setWorldSize(100, 100, 100);
+    fishes.setWorldSize(box);
     // setTimeout(function () {
     //     fishes.goTo(new qtek.math.Vector3(0, 50, 0), 30);
     // }, 1000);
 });
 scene.add(fishes.getRootNode());
 
-camera.position.set(0, 3, 8);
+camera.position.set(0, 3, 0);
+// camera.position.set(0, 3, 8);
 
 var lookAtTarget = new qtek.math.Vector3(0, 25, 0);
 // var up = new qtek.math.Vector3(0, 1, 0);
@@ -144,7 +145,6 @@ function start(vrDisplay) {
 
     animation.on('frame', function (frameTime) {
         function renderEye(eyeCamera, eye) {
-            // renderer.render(scene, camera);
             deferredRenderer.render(renderer, scene, eyeCamera, {
                 renderToTarget: true,
                 notUpdateScene: eye === 'right',
@@ -200,7 +200,7 @@ function start(vrDisplay) {
         else {
             renderEye(camera, true);
         }
-        // FXAA pass can render in one pass
+        // FXAA can render in one pass for both eyes
         fxaaPass.render(renderer);
 
         if (vrDisplay) {
