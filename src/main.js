@@ -18,13 +18,14 @@ var renderer = new qtek.Renderer({
 root.appendChild(renderer.canvas);
 
 var deferredRenderer = new qtek.deferred.Renderer({
-    shadowMapPass: new qtek.prePass.ShadowMap()
+    shadowMapPass: new qtek.prePass.ShadowMap(),
+    autoResize: false
 });
 var causticsEffect = new CausticsEffect();
 var fogEffect = new FogEffect();
 var blurEffect = new BlurEffect();
 
-var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'));
+var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'), true);
 tonemappingPass.getShader().disableTexturesAll();
 tonemappingPass.getShader().enableTexture('texture');
 tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
@@ -42,8 +43,8 @@ var lutPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.lut'), tru
 // lutPass.setUniform('lookup', lutTexture);
 // lutPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
-// var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
-// fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
+var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
+fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
 var animation = new qtek.animation.Animation();
 animation.start();
@@ -109,7 +110,7 @@ loader.success(function (result) {
                 mesh.material.diffuseMap.wrapS = qtek.Texture.REPEAT;
                 mesh.material.diffuseMap.wrapT = qtek.Texture.REPEAT;
                 mesh.material.diffuseMap.dirty();
-                // FIXME
+                // FIXME wrong on iphone se
                 mesh.material.normalMap = null;
             }
         }
@@ -123,7 +124,7 @@ function start(vrDisplay) {
     causticsLight.lookAt(scene.position);
 
     causticsLight.intensity = 1.8;
-    causticsLight.shadowResolution = 2048;
+    causticsLight.shadowResolution = 1024;
     causticsLight.shadowCascade = 2;
     causticsLight.cascadeSplitLogFactor = 0.5;
 
@@ -142,19 +143,32 @@ function start(vrDisplay) {
     }
 
     animation.on('frame', function (frameTime) {
-        function renderEye(eyeCamera, firstEye) {
+        function renderEye(eyeCamera, eye) {
             // renderer.render(scene, camera);
             deferredRenderer.render(renderer, scene, eyeCamera, {
                 renderToTarget: true,
-                notUpdateScene: !firstEye,
-                notUpdateShadow: !firstEye
+                notUpdateScene: eye === 'right',
+                notUpdateShadow: eye === 'right'
             });
             fogEffect.render(renderer, deferredRenderer, eyeCamera, deferredRenderer.getTargetTexture());
             // blurEffect.render(renderer, deferredRenderer, eyeCamera, fogEffect.getTargetTexture());
 
             tonemappingPass.render(renderer);
+            if (eye === 'left') {
+                tonemappingPass.getFrameBuffer().viewport = {
+                    x: 0, y: 0,
+                    width: renderer.getWidth() / 2, height: renderer.getHeight(),
+                    devicePixelRatio: renderer.getDevicePixelRatio()
+                };
+            }
+            else if (eye === 'right') {
+                tonemappingPass.getFrameBuffer().viewport = {
+                    x: renderer.getWidth() / 2, y: 0,
+                    width: renderer.getWidth() / 2, height: renderer.getHeight(),
+                    devicePixelRatio: renderer.getDevicePixelRatio()
+                };
+            }
             // lutPass.render(renderer);
-            // fxaaPass.render(renderer);
             // deferredRenderer.shadowMapPass.renderDebug(renderer);
         }
 
@@ -165,30 +179,45 @@ function start(vrDisplay) {
         causticsEffect.update(frameTime / 1000);
 
         camera.update();
+
+        var stereo = false;
         if (vrDisplay) {
 
+            stereo = true;
             stereoCamera.updateFromVRDisplay(vrDisplay, camera);
 
         }
-        else {
+        else if (window.stereo) {
+
+            stereo = true;
             stereoCamera.updateFromCamera(camera, 100, 1, 0.64);
         }
 
-        renderer.setViewport(0, 0, renderer.getWidth() / 2, renderer.getHeight());
-        renderEye(stereoCamera.getLeftCamera(), true);
-        renderer.setViewport(renderer.getWidth() / 2, 0, renderer.getWidth() / 2, renderer.getHeight());
-        renderEye(stereoCamera.getRightCamera());
+        if (stereo) {
+            renderEye(stereoCamera.getLeftCamera(), 'left');
+            renderEye(stereoCamera.getRightCamera(), 'right');
+        }
+        else {
+            renderEye(camera, true);
+        }
+        // FXAA pass can render in one pass
+        fxaaPass.render(renderer);
 
         if (vrDisplay) {
             vrDisplay.submitFrame();
         }
     });
 
-    resize();
+    resize((vrDisplay || window.stereo) ? 0.5 : 1);
+
+    window.addEventListener('resize', function () {
+        resize((vrDisplay || window.stereo) ? 0.5 : 1);
+    });
 
     renderUI(vrDisplay);
 }
 
+window.stereo = location.search.match(/stereo/);
 
 deferredRenderer.on('lightaccumulate', function (renderer, scene, eyeCamera) {
     causticsEffect.render(renderer, deferredRenderer, eyeCamera);
@@ -199,19 +228,22 @@ deferredRenderer.on('beforelightaccumulate', function (renderer, scene, eyeCamer
     }
 });
 
-function resize() {
+function resize(scale) {
+
     var dpr = renderer.getDevicePixelRatio();
     renderer.resize(root.clientWidth, root.clientHeight);
     camera.aspect = renderer.getWidth() / renderer.getHeight();
 
-    var scale = window.vr ? 0.5 : 1;
+    var width = renderer.getWidth() * scale * dpr;
+    var height = renderer.getHeight() * dpr;
 
-    lutPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
-    tonemappingPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
-    // fxaaPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
+    deferredRenderer.resize(width, height);
+
+    lutPass.resize(width, height);
+    tonemappingPass.resize(width / scale, height);
+
+    // fxaaPass.resize(width / scale, height);
 }
-
-window.addEventListener('resize', resize);
 
 var plane = new qtek.math.Plane();
 var setGoalAround = throttle(function (e) {

@@ -39,5 +39,8 @@ PostProcessPass.prototype.getTargetTexture = function () {
 PostProcessPass.prototype.getShader = function () {
     return this._pass.material.shader;
 };
+PostProcessPass.prototype.getFrameBuffer = function () {
+    return this._frameBuffer;
+};
 
 module.exports = PostProcessPass;

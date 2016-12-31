@@ -64,13 +64,14 @@
 	root.appendChild(renderer.canvas);
 
 	var deferredRenderer = new qtek.deferred.Renderer({
-	    shadowMapPass: new qtek.prePass.ShadowMap()
+	    shadowMapPass: new qtek.prePass.ShadowMap(),
+	    autoResize: false
 	});
 	var causticsEffect = new CausticsEffect();
 	var fogEffect = new FogEffect();
 	var blurEffect = new BlurEffect();
 
-	var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'));
+	var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'), true);
 	tonemappingPass.getShader().disableTexturesAll();
 	tonemappingPass.getShader().enableTexture('texture');
 	tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
@@ -88,8 +89,8 @@
 	// lutPass.setUniform('lookup', lutTexture);
 	// lutPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
-	// var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
-	// fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
+	var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
+	fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
 	var animation = new qtek.animation.Animation();
 	animation.start();
@@ -155,7 +156,7 @@
 	                mesh.material.diffuseMap.wrapS = qtek.Texture.REPEAT;
 	                mesh.material.diffuseMap.wrapT = qtek.Texture.REPEAT;
 	                mesh.material.diffuseMap.dirty();
-	                // FIXME
+	                // FIXME wrong on iphone se
 	                mesh.material.normalMap = null;
 	            }
 	        }
@@ -169,7 +170,7 @@
 	    causticsLight.lookAt(scene.position);
 
 	    causticsLight.intensity = 1.8;
-	    causticsLight.shadowResolution = 2048;
+	    causticsLight.shadowResolution = 1024;
 	    causticsLight.shadowCascade = 2;
 	    causticsLight.cascadeSplitLogFactor = 0.5;
 
@@ -188,19 +189,32 @@
 	    }
 
 	    animation.on('frame', function (frameTime) {
-	        function renderEye(eyeCamera, firstEye) {
+	        function renderEye(eyeCamera, eye) {
 	            // renderer.render(scene, camera);
 	            deferredRenderer.render(renderer, scene, eyeCamera, {
 	                renderToTarget: true,
-	                notUpdateScene: !firstEye,
-	                notUpdateShadow: !firstEye
+	                notUpdateScene: eye === 'right',
+	                notUpdateShadow: eye === 'right'
 	            });
 	            fogEffect.render(renderer, deferredRenderer, eyeCamera, deferredRenderer.getTargetTexture());
 	            // blurEffect.render(renderer, deferredRenderer, eyeCamera, fogEffect.getTargetTexture());
 
 	            tonemappingPass.render(renderer);
+	            if (eye === 'left') {
+	                tonemappingPass.getFrameBuffer().viewport = {
+	                    x: 0, y: 0,
+	                    width: renderer.getWidth() / 2, height: renderer.getHeight(),
+	                    devicePixelRatio: renderer.getDevicePixelRatio()
+	                };
+	            }
+	            else if (eye === 'right') {
+	                tonemappingPass.getFrameBuffer().viewport = {
+	                    x: renderer.getWidth() / 2, y: 0,
+	                    width: renderer.getWidth() / 2, height: renderer.getHeight(),
+	                    devicePixelRatio: renderer.getDevicePixelRatio()
+	                };
+	            }
 	            // lutPass.render(renderer);
-	            // fxaaPass.render(renderer);
 	            // deferredRenderer.shadowMapPass.renderDebug(renderer);
 	        }
 
@@ -211,30 +225,45 @@
 	        causticsEffect.update(frameTime / 1000);
 
 	        camera.update();
+
+	        var stereo = false;
 	        if (vrDisplay) {
 
+	            stereo = true;
 	            stereoCamera.updateFromVRDisplay(vrDisplay, camera);
 
 	        }
-	        else {
+	        else if (window.stereo) {
+
+	            stereo = true;
 	            stereoCamera.updateFromCamera(camera, 100, 1, 0.64);
 	        }
 
-	        renderer.setViewport(0, 0, renderer.getWidth() / 2, renderer.getHeight());
-	        renderEye(stereoCamera.getLeftCamera(), true);
-	        renderer.setViewport(renderer.getWidth() / 2, 0, renderer.getWidth() / 2, renderer.getHeight());
-	        renderEye(stereoCamera.getRightCamera());
+	        if (stereo) {
+	            renderEye(stereoCamera.getLeftCamera(), 'left');
+	            renderEye(stereoCamera.getRightCamera(), 'right');
+	        }
+	        else {
+	            renderEye(camera, true);
+	        }
+	        // FXAA pass can render in one pass
+	        fxaaPass.render(renderer);
 
 	        if (vrDisplay) {
 	            vrDisplay.submitFrame();
 	        }
 	    });
 
-	    resize();
+	    resize((vrDisplay || window.stereo) ? 0.5 : 1);
+
+	    window.addEventListener('resize', function () {
+	        resize((vrDisplay || window.stereo) ? 0.5 : 1);
+	    });
 
 	    renderUI(vrDisplay);
 	}
 
+	window.stereo = location.search.match(/stereo/);
 
 	deferredRenderer.on('lightaccumulate', function (renderer, scene, eyeCamera) {
 	    causticsEffect.render(renderer, deferredRenderer, eyeCamera);
@@ -245,19 +274,22 @@
 	    }
 	});
 
-	function resize() {
+	function resize(scale) {
+
 	    var dpr = renderer.getDevicePixelRatio();
 	    renderer.resize(root.clientWidth, root.clientHeight);
 	    camera.aspect = renderer.getWidth() / renderer.getHeight();
 
-	    var scale = window.vr ? 0.5 : 1;
+	    var width = renderer.getWidth() * scale * dpr;
+	    var height = renderer.getHeight() * dpr;
 
-	    lutPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
-	    tonemappingPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
-	    // fxaaPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
+	    deferredRenderer.resize(width, height);
+
+	    lutPass.resize(width, height);
+	    tonemappingPass.resize(width / scale, height);
+
+	    // fxaaPass.resize(width / scale, height);
 	}
-
-	window.addEventListener('resize', resize);
 
 	var plane = new qtek.math.Plane();
 	var setGoalAround = throttle(function (e) {
@@ -20067,7 +20099,7 @@
 	            cache.put('viewport', renderer.viewport);
 
 	            if (this.viewport) {
-	                renderer.setViewport(this.viewport, 1);
+	                renderer.setViewport(this.viewport);
 	            }
 	            else {
 	                renderer.setViewport(0, 0, this._width, this._height, 1);
@@ -21570,7 +21602,7 @@
 	        };
 	    }, {
 
-	        _resize: function (width, height) {
+	        resize: function (width, height) {
 	            this._gBufferTex1.width = width;
 	            this._gBufferTex1.height = height;
 	            this._gBufferTex1.dirty();
@@ -21585,15 +21617,8 @@
 	        },
 
 	        update: function (renderer, scene, camera) {
-	            var width = renderer.getWidth();
-	            var height = renderer.getHeight();
-	            var dpr = renderer.getDevicePixelRatio();
 
 	            var gl = renderer.gl;
-
-	            if (width !== this._gBufferTex1.width || height !== this._gBufferTex1.height) {
-	                this._resize(width * dpr, height * dpr);
-	            }
 
 	            var frameBuffer = this._frameBuffer;
 	            frameBuffer.attach(renderer.gl, this._gBufferTex1);
@@ -22050,19 +22075,20 @@
 	         *      x: 0,
 	         *      y: 0,
 	         *      width: width,
-	         *      height: height
-	         *  }, 1)
+	         *      height: height,
+	         *      devicePixelRatio: 1
+	         *  })
 	         */
 	        setViewport: function (x, y, width, height, dpr) {
 
 	            if (typeof x === 'object') {
 	                var obj = x;
-	                dpr = y;
 
 	                x = obj.x;
 	                y = obj.y;
 	                width = obj.width;
 	                height = obj.height;
+	                dpr = obj.devicePixelRatio;
 	            }
 	            dpr = dpr || this.devicePixelRatio;
 
@@ -23013,6 +23039,8 @@
 
 	            shadowMapPass: null,
 
+	            autoResize: true,
+
 	            _createLightPassMat: createLightPassMat,
 
 	            _gBuffer: new GBuffer(),
@@ -23084,18 +23112,21 @@
 
 	            this._gBuffer.update(renderer, scene, camera);
 
-	            if (renderer.getWidth() !== this._lightAccumTex.width
-	                && renderer.getHeight() !== this._lightAccumTex.height
+	            // PENDING For stereo rendering
+	            var dpr = renderer.getDevicePixelRatio();
+	            if (this.autoResize
+	                && (renderer.getWidth() * dpr !== this._lightAccumTex.width
+	                || renderer.getHeight() * dpr !== this._lightAccumTex.height)
 	            ) {
-	                var dpr = renderer.getDevicePixelRatio();
-	                this._resize(renderer.getWidth() * dpr, renderer.getHeight() * dpr);
+	                this.resize(renderer.getWidth() * dpr, renderer.getHeight() * dpr);
 	            }
 
 	            // Accumulate light buffer
 	            this._accumulateLightBuffer(renderer, scene, camera, !opts.notUpdateShadow);
 
 	            if (!opts.renderToTarget) {
-	                this._outputPass.setUniform('texture', this._lightAccumTex);
+	                // this._outputPass.setUniform('texture', this._lightAccumTex);
+
 	                this._outputPass.render(renderer);
 	                // this._gBuffer.renderDebug(renderer, camera, 'normal');
 	            }
@@ -23113,10 +23144,12 @@
 	        //     return this._fullQuadPass;
 	        // },
 
-	        _resize: function (width, height) {
+	        resize: function (width, height) {
 	            this._lightAccumTex.width = width;
 	            this._lightAccumTex.height = height;
 	            this._lightAccumTex.dirty();
+
+	            this._gBuffer.resize(width, height);
 	        },
 
 	        _accumulateLightBuffer: function (renderer, scene, camera, updateShadow) {
@@ -23260,7 +23293,7 @@
 	            this._renderVolumeMeshList(renderer, camera, volumeMeshList);
 
 	            // if (shadowMapPass && updateShadow) { // FIXME Extension may have shadow rendered ignore updateShadow flag
-	            if (shadowMapPass) {
+	            if (shadowMapPass && this._shadowCasters) {
 	                shadowMapPass.restoreMaterial(
 	                    this._shadowCasters
 	                );
@@ -35041,6 +35074,9 @@
 	PostProcessPass.prototype.getShader = function () {
 	    return this._pass.material.shader;
 	};
+	PostProcessPass.prototype.getFrameBuffer = function () {
+	    return this._frameBuffer;
+	};
 
 	module.exports = PostProcessPass;
 
@@ -35135,16 +35171,17 @@
 	    var groupTask = new qtek.async.TaskGroup();
 	    groupTask.all(loaders).success(function (results) {
 	        results.forEach(function (result, idx) {
-	            var normalMap = new qtek.Texture2D({
-	                anisotropic: 32
-	            });
-	            normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
+	            // var normalMap = new qtek.Texture2D({
+	            //     anisotropic: 32
+	            // });
+	            // normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
 	            result.rootNode.traverse(function (node) {
 	                if (node.material) {
 	                    node.geometry.generateTangents();
 	                    node.material.linear = true;
 	                    node.material.roughness = 0.8;
-	                    node.material.normalMap = normalMap;
+	                    // FIXME wrong on iphone se
+	                    // node.material.normalMap = normalMap;
 	                    node.material.diffuseMap.anisotropic = 32;
 	                }
 	                if (fishIds[idx] === '15') {

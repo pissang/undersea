@@ -19,16 +19,17 @@ function Fishes(cb) {
     var groupTask = new qtek.async.TaskGroup();
     groupTask.all(loaders).success(function (results) {
         results.forEach(function (result, idx) {
-            var normalMap = new qtek.Texture2D({
-                anisotropic: 32
-            });
-            normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
+            // var normalMap = new qtek.Texture2D({
+            //     anisotropic: 32
+            // });
+            // normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
             result.rootNode.traverse(function (node) {
                 if (node.material) {
                     node.geometry.generateTangents();
                     node.material.linear = true;
                     node.material.roughness = 0.8;
-                    node.material.normalMap = normalMap;
+                    // FIXME wrong on iphone se
+                    // node.material.normalMap = normalMap;
                     node.material.diffuseMap.anisotropic = 32;
                 }
                 if (fishIds[idx] === '15') {
