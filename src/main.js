@@ -6,12 +6,14 @@ var PostProcessPass = require('./PostProcessPass');
 var Fishes = require('./Fishes');
 var Terrain = require('./Terrain');
 var throttle = require('lodash.throttle');
+var stereoCamera = new qtek.vr.StereoCamera();
 
 var root = document.getElementById('root');
 
 var renderer = new qtek.Renderer({
-    devicePixelRatio: 1
+    // devicePixelRatio: 1
 });
+
 root.appendChild(renderer.canvas);
 
 var deferredRenderer = new qtek.deferred.Renderer({
@@ -21,7 +23,7 @@ var causticsEffect = new CausticsEffect();
 var fogEffect = new FogEffect();
 var blurEffect = new BlurEffect();
 
-var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'), true);
+var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'));
 tonemappingPass.getShader().disableTexturesAll();
 tonemappingPass.getShader().enableTexture('texture');
 tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
@@ -37,8 +39,8 @@ var lutPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.lut'), tru
 // lutPass.setUniform('lookup', lutTexture);
 // lutPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
-var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
-fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
+// var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
+// fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
 var animation = new qtek.animation.Animation();
 animation.start();
@@ -46,11 +48,6 @@ animation.start();
 var scene = new qtek.Scene();
 var camera = new qtek.camera.Perspective({
     far: 1000
-});
-var control = new qtek.plugin.FirstPersonControl({
-    target: camera,
-    domElement: renderer.canvas,
-    sensitivity: 0.4,
 });
 
 var terrain = new Terrain();
@@ -71,12 +68,13 @@ var fishes = new Fishes(function () {
 });
 scene.add(fishes.getRootNode());
 
-camera.position.set(0, 40, 800);
+camera.position.set(0, 30, 800);
 
-var lookAtTarget = new qtek.math.Vector3(0, 20, 0);
+var lookAtTarget = new qtek.math.Vector3(0, 25, 0);
 var up = new qtek.math.Vector3(0, 1, 0);
 var animator = animation.animate(camera.position)
     .when(10000, {
+        y: 15,
         z: 80
     })
     .during(function () {
@@ -110,47 +108,97 @@ loader.success(function (result) {
         }
     });
 });
-loader.load('asset/model/coral.gltf');
+// loader.load('asset/model/coral.gltf');
 
-var causticsLight = causticsEffect.getLight();
-causticsLight.intensity = 1.8;
-causticsLight.position.set(0, 10, 7);
-causticsLight.lookAt(scene.position);
-causticsLight.shadowResolution = 2048;
-causticsLight.shadowCascade = 2;
-causticsLight.cascadeSplitLogFactor = 0.5;
+function start(vrDisplay) {
+    var causticsLight = causticsEffect.getLight();
+    causticsLight.position.set(0, 10, 7);
+    causticsLight.lookAt(scene.position);
 
-animation.on('frame', function (frameTime) {
-    control.update(frameTime);
-    fishes.update(frameTime);
+    causticsLight.intensity = 1.8;
+    causticsLight.shadowResolution = 2048;
+    causticsLight.shadowCascade = 2;
+    causticsLight.cascadeSplitLogFactor = 0.5;
 
-    causticsEffect.update(frameTime / 1000);
-    // renderer.render(scene, camera);
-    deferredRenderer.render(renderer, scene, camera, true);
-    fogEffect.render(renderer, deferredRenderer, camera, deferredRenderer.getTargetTexture());
-    // blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
 
-    tonemappingPass.render(renderer);
-    // lutPass.render(renderer);
-    fxaaPass.render(renderer);
-    // deferredRenderer.shadowMapPass.renderDebug(renderer);
+    causticsLight.castShadow = !vrDisplay;
+
+    var control;
+    if (!vrDisplay) {
+
+        control = new qtek.plugin.FirstPersonControl({
+            target: camera,
+            domElement: renderer.canvas,
+            sensitivity: 0.2,
+        });
+
+    }
+
+    animation.on('frame', function (frameTime) {
+        function renderEye(eyeCamera, firstEye) {
+            // renderer.render(scene, camera);
+            deferredRenderer.render(renderer, scene, eyeCamera, {
+                renderToTarget: true,
+                notUpdateScene: !firstEye,
+                notUpdateShadow: !firstEye
+            });
+            fogEffect.render(renderer, deferredRenderer, eyeCamera, deferredRenderer.getTargetTexture());
+            // blurEffect.render(renderer, deferredRenderer, eyeCamera, fogEffect.getTargetTexture());
+
+            tonemappingPass.render(renderer);
+            // lutPass.render(renderer);
+            // fxaaPass.render(renderer);
+            // deferredRenderer.shadowMapPass.renderDebug(renderer);
+        }
+
+        control && control.update(frameTime);
+
+        fishes.update(frameTime);
+
+        causticsEffect.update(frameTime / 1000);
+
+        if (vrDisplay) {
+
+            stereoCamera.updateFromVRDisplay(vrDisplay);
+
+        }
+        else {
+            camera.update();
+            stereoCamera.updateFromCamera(camera, 100, 1, 0.64);
+        }
+
+        renderer.setViewport(0, 0, renderer.getWidth() / 2, renderer.getHeight());
+        renderEye(stereoCamera.getLeftCamera(), true);
+        renderer.setViewport(renderer.getWidth() / 2, 0, renderer.getWidth() / 2, renderer.getHeight());
+        renderEye(stereoCamera.getRightCamera());
+    });
+
+    resize();
+
+    renderUI(vrDisplay);
+}
+
+
+deferredRenderer.on('lightaccumulate', function (renderer, scene, eyeCamera) {
+    causticsEffect.render(renderer, deferredRenderer, eyeCamera);
 });
-deferredRenderer.on('lightaccumulate', function () {
-    causticsEffect.render(renderer, deferredRenderer, camera);
-});
-deferredRenderer.on('beforelightaccumulate', function () {
-    causticsEffect.prepareShadow(renderer, deferredRenderer, scene, camera);
+deferredRenderer.on('beforelightaccumulate', function (renderer, scene, eyeCamera, updateShadow) {
+    if (updateShadow) {
+        causticsEffect.prepareShadow(renderer, deferredRenderer, scene, eyeCamera);
+    }
 });
 
 function resize() {
+    var dpr = renderer.getDevicePixelRatio();
     renderer.resize(root.clientWidth, root.clientHeight);
-    camera.aspect = renderer.getViewportAspect();
+    camera.aspect = renderer.getWidth() / renderer.getHeight();
 
-    lutPass.resize(renderer.getWidth(), renderer.getHeight());
-    tonemappingPass.resize(renderer.getWidth(), renderer.getHeight());
+    var scale = window.vr ? 0.5 : 1;
+
+    lutPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
+    tonemappingPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
+    // fxaaPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
 }
-
-resize();
 
 window.addEventListener('resize', resize);
 
@@ -177,18 +225,18 @@ function textFormation() {
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
     ctx.font = '26px Helvetica';
-    canvas.width = ctx.measureText(config.text).width;
+    canvas.width = ctx.measureText(config.text.toUpperCase()).width;
 
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
     ctx.font = '26px Helvetica';
-    ctx.fillText(config.text, 0, 0);
+    ctx.fillText(config.text.toUpperCase(), 0, 0);
 
     var box = new qtek.math.BoundingBox();
     var height = 60;
     var width = height / canvas.height * canvas.width;
-    box.min.set(-width / 2, 5, -2);
-    box.max.set(width / 2, 5 + height, 2);
+    box.min.set(-width / 2, 20, -2);
+    box.max.set(width / 2, 20 + height, 2);
     fishes.setFormation(canvas, box);
 }
 
@@ -210,45 +258,75 @@ var config = {
     // sunIntensity: 1
 };
 
-function update() {
-    fogEffect.setParameter('fogDensity', config.fogDensity);
-    fogEffect.setParameter('sceneColor', config.sceneColor.map(function (col) {
-        return col / 255;
-    }));
-    fogEffect.setParameter('fogColor0', config.fogColor0.map(function (col) {
-        return col / 255;
-    }));
-    fogEffect.setParameter('fogColor1', config.fogColor1.map(function (col) {
-        return col / 255;
-    }));
+function renderUI(vrDisplay) {
 
-    causticsEffect.setParameter('causticsIntensity', config.causticsIntensity);
-    causticsEffect.setParameter('causticsScale', config.causticsScale);
+    function update() {
+        fogEffect.setParameter('fogDensity', config.fogDensity);
+        fogEffect.setParameter('sceneColor', config.sceneColor.map(function (col) {
+            return col / 255;
+        }));
+        fogEffect.setParameter('fogColor0', config.fogColor0.map(function (col) {
+            return col / 255;
+        }));
+        fogEffect.setParameter('fogColor1', config.fogColor1.map(function (col) {
+            return col / 255;
+        }));
 
-    causticsEffect.setParameter('ambientColor', [
-        config.ambientIntensity,
-        config.ambientIntensity,
-        config.ambientIntensity
-    ]);
+        causticsEffect.setParameter('causticsIntensity', config.causticsIntensity);
+        causticsEffect.setParameter('causticsScale', config.causticsScale);
 
-    blurEffect.setParameter('blurNear', config.blurNear);
-    blurEffect.setParameter('blurFar', config.blurFar);
+        causticsEffect.setParameter('ambientColor', [
+            config.ambientIntensity,
+            config.ambientIntensity,
+            config.ambientIntensity
+        ]);
+
+        blurEffect.setParameter('blurNear', config.blurNear);
+        blurEffect.setParameter('blurFar', config.blurFar);
+    }
+
+    if (!vrDisplay) {
+        var gui = new dat.GUI();
+        gui.remember(config);
+
+        gui.add(config, 'text').onChange(textFormation);
+
+        gui.add(config, 'fogDensity', 0, 1).onChange(update);
+        gui.addColor(config, 'fogColor0').onChange(update);
+        gui.addColor(config, 'fogColor1').onChange(update);
+        gui.addColor(config, 'sceneColor').onChange(update);
+        gui.add(config, 'causticsIntensity', 0, 4).onChange(update);
+        // gui.add(config, 'causticsScale', 0, 8).onChange(update);
+        gui.add(config, 'ambientIntensity', 0, 1).onChange(update);
+
+        // gui.add(config, 'blurNear', 0, 200).onChange(update);
+        // gui.add(config, 'blurFar', 0, 500).onChange(update);
+    }
+
+    update();
 }
 
-var gui = new dat.GUI();
-gui.remember(config);
 
-gui.add(config, 'text').onChange(textFormation);
+if (navigator.getVRDisplays) {
+    navigator.getVRDisplays().then(function (displays) {
+        if (displays.length > 0)  {
+            var vrDisplay = displays[0];
+            vrDisplay.requestPresent({
+                // source: renderer.canvas
+            }).then(function () {
+                start(vrDisplay);
+            }).catch(function () {
+                console.error('VRDisplay is not capable of presenting');
 
-gui.add(config, 'fogDensity', 0, 1).onChange(update);
-gui.addColor(config, 'fogColor0').onChange(update);
-gui.addColor(config, 'fogColor1').onChange(update);
-gui.addColor(config, 'sceneColor').onChange(update);
-gui.add(config, 'causticsIntensity', 0, 4).onChange(update);
-gui.add(config, 'causticsScale', 0, 8).onChange(update);
-gui.add(config, 'ambientIntensity', 0, 1).onChange(update);
+                start();
+            });
+        }
+    }).catch(function () {
+        console.error('VRDisplay is not capable of presenting');
 
-gui.add(config, 'blurNear', 0, 200).onChange(update);
-gui.add(config, 'blurFar', 0, 500).onChange(update);
-
-update();
+        start();
+    });
+}
+else {
+    start();
+}

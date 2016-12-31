@@ -1,7 +1,7 @@
 var qtek = require('qtek');
 var Boid = require('./Boid');
 
-var fishIds = ['01', '02', '05', '07', '12', '15'];
+var fishIds = ['01', '02', '05', '07', '12'];
 
 function Fishes(cb) {
     this._rootNode = new qtek.Node();
@@ -36,7 +36,7 @@ function Fishes(cb) {
                 }
             });
         });
-        for (var i = 0; i < 600; i++) {
+        for (var i = 0; i < 100; i++) {
             var boid = new Boid();
             boid.velocity.x = Math.random() * 0.2 - 0.1;
             boid.velocity.y = Math.random() * 0.2 - 0.1;
@@ -159,6 +159,8 @@ Fishes.prototype.setFormation = function (img, box) {
             goal.set(wx, wy, wz);
             boid.setGoal(goal);
             boid.setGoalIntensity(10);
+
+
 
             usedFish++;
             if (usedFish >= boids.length) {

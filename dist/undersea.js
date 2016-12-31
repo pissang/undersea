@@ -52,12 +52,14 @@
 	var Fishes = __webpack_require__(162);
 	var Terrain = __webpack_require__(164);
 	var throttle = __webpack_require__(165);
+	var stereoCamera = new qtek.vr.StereoCamera();
 
 	var root = document.getElementById('root');
 
 	var renderer = new qtek.Renderer({
-	    devicePixelRatio: 1
+	    // devicePixelRatio: 1
 	});
+
 	root.appendChild(renderer.canvas);
 
 	var deferredRenderer = new qtek.deferred.Renderer({
@@ -67,7 +69,7 @@
 	var fogEffect = new FogEffect();
 	var blurEffect = new BlurEffect();
 
-	var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'), true);
+	var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'));
 	tonemappingPass.getShader().disableTexturesAll();
 	tonemappingPass.getShader().enableTexture('texture');
 	tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
@@ -83,8 +85,8 @@
 	// lutPass.setUniform('lookup', lutTexture);
 	// lutPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
-	var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
-	fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
+	// var fxaaPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.fxaa'));
+	// fxaaPass.setUniform('texture', tonemappingPass.getTargetTexture());
 
 	var animation = new qtek.animation.Animation();
 	animation.start();
@@ -92,11 +94,6 @@
 	var scene = new qtek.Scene();
 	var camera = new qtek.camera.Perspective({
 	    far: 1000
-	});
-	var control = new qtek.plugin.FirstPersonControl({
-	    target: camera,
-	    domElement: renderer.canvas,
-	    sensitivity: 0.4,
 	});
 
 	var terrain = new Terrain();
@@ -117,12 +114,13 @@
 	});
 	scene.add(fishes.getRootNode());
 
-	camera.position.set(0, 40, 800);
+	camera.position.set(0, 30, 800);
 
-	var lookAtTarget = new qtek.math.Vector3(0, 20, 0);
+	var lookAtTarget = new qtek.math.Vector3(0, 25, 0);
 	var up = new qtek.math.Vector3(0, 1, 0);
 	var animator = animation.animate(camera.position)
 	    .when(10000, {
+	        y: 15,
 	        z: 80
 	    })
 	    .during(function () {
@@ -156,47 +154,97 @@
 	        }
 	    });
 	});
-	loader.load('asset/model/coral.gltf');
+	// loader.load('asset/model/coral.gltf');
 
-	var causticsLight = causticsEffect.getLight();
-	causticsLight.intensity = 1.8;
-	causticsLight.position.set(0, 10, 7);
-	causticsLight.lookAt(scene.position);
-	causticsLight.shadowResolution = 2048;
-	causticsLight.shadowCascade = 2;
-	causticsLight.cascadeSplitLogFactor = 0.5;
+	function start(vrDisplay) {
+	    var causticsLight = causticsEffect.getLight();
+	    causticsLight.position.set(0, 10, 7);
+	    causticsLight.lookAt(scene.position);
 
-	animation.on('frame', function (frameTime) {
-	    control.update(frameTime);
-	    fishes.update(frameTime);
+	    causticsLight.intensity = 1.8;
+	    causticsLight.shadowResolution = 2048;
+	    causticsLight.shadowCascade = 2;
+	    causticsLight.cascadeSplitLogFactor = 0.5;
 
-	    causticsEffect.update(frameTime / 1000);
-	    // renderer.render(scene, camera);
-	    deferredRenderer.render(renderer, scene, camera, true);
-	    fogEffect.render(renderer, deferredRenderer, camera, deferredRenderer.getTargetTexture());
-	    // blurEffect.render(renderer, deferredRenderer, camera, fogEffect.getTargetTexture());
 
-	    tonemappingPass.render(renderer);
-	    // lutPass.render(renderer);
-	    fxaaPass.render(renderer);
-	    // deferredRenderer.shadowMapPass.renderDebug(renderer);
+	    causticsLight.castShadow = !vrDisplay;
+
+	    var control;
+	    if (!vrDisplay) {
+
+	        control = new qtek.plugin.FirstPersonControl({
+	            target: camera,
+	            domElement: renderer.canvas,
+	            sensitivity: 0.2,
+	        });
+
+	    }
+
+	    animation.on('frame', function (frameTime) {
+	        function renderEye(eyeCamera, firstEye) {
+	            // renderer.render(scene, camera);
+	            deferredRenderer.render(renderer, scene, eyeCamera, {
+	                renderToTarget: true,
+	                notUpdateScene: !firstEye,
+	                notUpdateShadow: !firstEye
+	            });
+	            fogEffect.render(renderer, deferredRenderer, eyeCamera, deferredRenderer.getTargetTexture());
+	            // blurEffect.render(renderer, deferredRenderer, eyeCamera, fogEffect.getTargetTexture());
+
+	            tonemappingPass.render(renderer);
+	            // lutPass.render(renderer);
+	            // fxaaPass.render(renderer);
+	            // deferredRenderer.shadowMapPass.renderDebug(renderer);
+	        }
+
+	        control && control.update(frameTime);
+
+	        fishes.update(frameTime);
+
+	        causticsEffect.update(frameTime / 1000);
+
+	        if (vrDisplay) {
+
+	            stereoCamera.updateFromVRDisplay(vrDisplay);
+
+	        }
+	        else {
+	            camera.update();
+	            stereoCamera.updateFromCamera(camera, 100, 1, 0.64);
+	        }
+
+	        renderer.setViewport(0, 0, renderer.getWidth() / 2, renderer.getHeight());
+	        renderEye(stereoCamera.getLeftCamera(), true);
+	        renderer.setViewport(renderer.getWidth() / 2, 0, renderer.getWidth() / 2, renderer.getHeight());
+	        renderEye(stereoCamera.getRightCamera());
+	    });
+
+	    resize();
+
+	    renderUI(vrDisplay);
+	}
+
+
+	deferredRenderer.on('lightaccumulate', function (renderer, scene, eyeCamera) {
+	    causticsEffect.render(renderer, deferredRenderer, eyeCamera);
 	});
-	deferredRenderer.on('lightaccumulate', function () {
-	    causticsEffect.render(renderer, deferredRenderer, camera);
-	});
-	deferredRenderer.on('beforelightaccumulate', function () {
-	    causticsEffect.prepareShadow(renderer, deferredRenderer, scene, camera);
+	deferredRenderer.on('beforelightaccumulate', function (renderer, scene, eyeCamera, updateShadow) {
+	    if (updateShadow) {
+	        causticsEffect.prepareShadow(renderer, deferredRenderer, scene, eyeCamera);
+	    }
 	});
 
 	function resize() {
+	    var dpr = renderer.getDevicePixelRatio();
 	    renderer.resize(root.clientWidth, root.clientHeight);
-	    camera.aspect = renderer.getViewportAspect();
+	    camera.aspect = renderer.getWidth() / renderer.getHeight();
 
-	    lutPass.resize(renderer.getWidth(), renderer.getHeight());
-	    tonemappingPass.resize(renderer.getWidth(), renderer.getHeight());
+	    var scale = window.vr ? 0.5 : 1;
+
+	    lutPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
+	    tonemappingPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
+	    // fxaaPass.resize(renderer.getWidth() * scale * dpr, renderer.getHeight() * dpr);
 	}
-
-	resize();
 
 	window.addEventListener('resize', resize);
 
@@ -223,18 +271,18 @@
 	    ctx.textBaseline = 'top';
 	    ctx.textAlign = 'left';
 	    ctx.font = '26px Helvetica';
-	    canvas.width = ctx.measureText(config.text).width;
+	    canvas.width = ctx.measureText(config.text.toUpperCase()).width;
 
 	    ctx.textBaseline = 'top';
 	    ctx.textAlign = 'left';
 	    ctx.font = '26px Helvetica';
-	    ctx.fillText(config.text, 0, 0);
+	    ctx.fillText(config.text.toUpperCase(), 0, 0);
 
 	    var box = new qtek.math.BoundingBox();
 	    var height = 60;
 	    var width = height / canvas.height * canvas.width;
-	    box.min.set(-width / 2, 5, -2);
-	    box.max.set(width / 2, 5 + height, 2);
+	    box.min.set(-width / 2, 20, -2);
+	    box.max.set(width / 2, 20 + height, 2);
 	    fishes.setFormation(canvas, box);
 	}
 
@@ -256,48 +304,79 @@
 	    // sunIntensity: 1
 	};
 
-	function update() {
-	    fogEffect.setParameter('fogDensity', config.fogDensity);
-	    fogEffect.setParameter('sceneColor', config.sceneColor.map(function (col) {
-	        return col / 255;
-	    }));
-	    fogEffect.setParameter('fogColor0', config.fogColor0.map(function (col) {
-	        return col / 255;
-	    }));
-	    fogEffect.setParameter('fogColor1', config.fogColor1.map(function (col) {
-	        return col / 255;
-	    }));
+	function renderUI(vrDisplay) {
 
-	    causticsEffect.setParameter('causticsIntensity', config.causticsIntensity);
-	    causticsEffect.setParameter('causticsScale', config.causticsScale);
+	    function update() {
+	        fogEffect.setParameter('fogDensity', config.fogDensity);
+	        fogEffect.setParameter('sceneColor', config.sceneColor.map(function (col) {
+	            return col / 255;
+	        }));
+	        fogEffect.setParameter('fogColor0', config.fogColor0.map(function (col) {
+	            return col / 255;
+	        }));
+	        fogEffect.setParameter('fogColor1', config.fogColor1.map(function (col) {
+	            return col / 255;
+	        }));
 
-	    causticsEffect.setParameter('ambientColor', [
-	        config.ambientIntensity,
-	        config.ambientIntensity,
-	        config.ambientIntensity
-	    ]);
+	        causticsEffect.setParameter('causticsIntensity', config.causticsIntensity);
+	        causticsEffect.setParameter('causticsScale', config.causticsScale);
 
-	    blurEffect.setParameter('blurNear', config.blurNear);
-	    blurEffect.setParameter('blurFar', config.blurFar);
+	        causticsEffect.setParameter('ambientColor', [
+	            config.ambientIntensity,
+	            config.ambientIntensity,
+	            config.ambientIntensity
+	        ]);
+
+	        blurEffect.setParameter('blurNear', config.blurNear);
+	        blurEffect.setParameter('blurFar', config.blurFar);
+	    }
+
+	    if (!vrDisplay) {
+	        var gui = new dat.GUI();
+	        gui.remember(config);
+
+	        gui.add(config, 'text').onChange(textFormation);
+
+	        gui.add(config, 'fogDensity', 0, 1).onChange(update);
+	        gui.addColor(config, 'fogColor0').onChange(update);
+	        gui.addColor(config, 'fogColor1').onChange(update);
+	        gui.addColor(config, 'sceneColor').onChange(update);
+	        gui.add(config, 'causticsIntensity', 0, 4).onChange(update);
+	        // gui.add(config, 'causticsScale', 0, 8).onChange(update);
+	        gui.add(config, 'ambientIntensity', 0, 1).onChange(update);
+
+	        // gui.add(config, 'blurNear', 0, 200).onChange(update);
+	        // gui.add(config, 'blurFar', 0, 500).onChange(update);
+	    }
+
+	    update();
 	}
 
-	var gui = new dat.GUI();
-	gui.remember(config);
 
-	gui.add(config, 'text').onChange(textFormation);
+	if (navigator.getVRDisplays) {
+	    navigator.getVRDisplays().then(function (displays) {
+	        if (displays.length > 0)  {
+	            var vrDisplay = displays[0];
+	            vrDisplay.requestPresent({
+	                // source: renderer.canvas
+	            }).then(function () {
+	                start(vrDisplay);
+	            }).catch(function () {
+	                console.error('VRDisplay is not capable of presenting');
 
-	gui.add(config, 'fogDensity', 0, 1).onChange(update);
-	gui.addColor(config, 'fogColor0').onChange(update);
-	gui.addColor(config, 'fogColor1').onChange(update);
-	gui.addColor(config, 'sceneColor').onChange(update);
-	gui.add(config, 'causticsIntensity', 0, 4).onChange(update);
-	gui.add(config, 'causticsScale', 0, 8).onChange(update);
-	gui.add(config, 'ambientIntensity', 0, 1).onChange(update);
+	                start();
+	            });
+	        }
+	    }).catch(function () {
+	        console.error('VRDisplay is not capable of presenting');
 
-	gui.add(config, 'blurNear', 0, 200).onChange(update);
-	gui.add(config, 'blurFar', 0, 500).onChange(update);
+	        start();
+	    });
+	}
+	else {
+	    start();
+	}
 
-	update();
 
 /***/ },
 /* 1 */
@@ -484,7 +563,7 @@
 			"texture": __webpack_require__(92)
 		},
 		"vr": {
-			"Renderer": __webpack_require__(154)
+			"StereoCamera": __webpack_require__(154)
 		}
 	};
 
@@ -507,7 +586,7 @@
 	                                || window.msRequestAnimationFrame
 	                                || window.mozRequestAnimationFrame
 	                                || window.webkitRequestAnimationFrame
-	                                || function(func){ setTimeout(func, 16); };
+	                                || function (func){ setTimeout(func, 16); };
 
 	    /**
 	     * Animation is global timeline that schedule all clips. each frame animation will set the time of clips to current and update the states of clips
@@ -531,7 +610,7 @@
 	     *         })
 	     *         .start('spline');
 	     */
-	    var Animation = Base.extend(function() {
+	    var Animation = Base.extend(function () {
 	        return /** @lends qtek.animation.Animation# */{
 	            /**
 	             * stage is an object with render method, each frame if there exists any animating clips, stage.render will be called
@@ -564,7 +643,7 @@
 	        /**
 	         * @param {qtek.animation.Clip} clip
 	         */
-	        addClip: function(clip) {
+	        addClip: function (clip) {
 	            if (this._clips.indexOf(clip) < 0) {
 	                this._clips.push(clip);
 	            }
@@ -573,7 +652,7 @@
 	        /**
 	         * @param  {qtek.animation.Clip} clip
 	         */
-	        removeClip: function(clip) {
+	        removeClip: function (clip) {
 	            var idx = this._clips.indexOf(clip);
 	            if (idx >= 0) {
 	                this._clips.splice(idx, 1);
@@ -592,7 +671,7 @@
 	            animator.animation = null;
 	        },
 
-	        _update: function() {
+	        _update: function () {
 
 	            var time = new Date().getTime();
 	            var delta = time - this._time;
@@ -639,7 +718,7 @@
 	        /**
 	         * Start running animation
 	         */
-	        start: function() {
+	        start: function () {
 	            var self = this;
 
 	            this._running = true;
@@ -659,13 +738,13 @@
 	        /**
 	         * Stop running animation
 	         */
-	        stop: function() {
+	        stop: function () {
 	            this._running = false;
 	        },
 	        /**
 	         * Remove all clips
 	         */
-	        removeClipsAll: function() {
+	        removeClipsAll: function () {
 	            this._clips = [];
 	        },
 	        /**
@@ -678,7 +757,7 @@
 	         * @param  {Function} [options.interpolater]
 	         * @return {qtek.animation.Animator}
 	         */
-	        animate: function(target, options) {
+	        animate: function (target, options) {
 	            options = options || {};
 	            var animator = new Animator(
 	                target,
@@ -9311,7 +9390,7 @@
 	     * @constructor qtek.Camera
 	     * @extends qtek.Node
 	     */
-	    var Camera = Node.extend(function() {
+	    var Camera = Node.extend(function () {
 	        return /** @lends qtek.Camera# */ {
 	            /**
 	             * Camera projection matrix
@@ -9349,25 +9428,38 @@
 	            //TODO In case of one camera to multiple scenes
 	            sceneBoundingBoxLastFrame: new BoundingBox()
 	        };
-	    }, function() {
+	    }, function () {
 	        this.update(true);
 	    },
 	    /** @lends qtek.Camera.prototype */
 	    {
 
-	        update: function(force) {
+	        update: function (force) {
 	            Node.prototype.update.call(this, force);
-	            mat4.invert(this.viewMatrix._array, this.worldTransform._array);
+	            Matrix4.invert(this.viewMatrix, this.worldTransform);
 
 	            this.updateProjectionMatrix();
-	            mat4.invert(this.invProjectionMatrix._array, this.projectionMatrix._array);
+	            Matrix4.invert(this.invProjectionMatrix, this.projectionMatrix);
 
 	            this.frustum.setFromProjection(this.projectionMatrix);
 	        },
+
+	        /**
+	         * Set camera view matrix
+	         */
+	        setViewMatrix: function (viewMatrix) {
+	            Matrix4.invert(this.worldTransform, viewMatrix);
+	            this.decomposeWorldTransform();
+	        },
+
+	        /**
+	         * Decompose camera projection matrix
+	         */
+	        decomposeProjectionMatrix: function () {},
 	        /**
 	         * Update projection matrix, called after update
 	         */
-	        updateProjectionMatrix: function() {},
+	        updateProjectionMatrix: function () {},
 
 	        /**
 	         * Cast a picking ray from camera near plane to far plane
@@ -9376,9 +9468,9 @@
 	         * @param {qtek.math.Ray} [out]
 	         * @return {qtek.math.Ray}
 	         */
-	        castRay: (function() {
+	        castRay: (function () {
 	            var v4 = vec4.create();
-	            return function(ndc, out) {
+	            return function (ndc, out) {
 	                var ray = out !== undefined ? out : new Ray();
 	                var x = ndc._array[0];
 	                var y = ndc._array[1];
@@ -11813,6 +11905,17 @@
 	        constructor: Matrix4,
 
 	        /**
+	         * Set components from array
+	         * @param  {Float32Array|number[]} arr
+	         */
+	        setArray: function (arr) {
+	            for (var i = 0; i < this._array.length; i++) {
+	                this._array[i] = arr[i];
+	            }
+	            this._dirty = true;
+	            return this;
+	        },
+	        /**
 	         * Calculate the adjugate of self, in-place
 	         * @return {qtek.math.Matrix4}
 	         */
@@ -12803,19 +12906,19 @@
 	            vec3Set(planes[1].normal._array, m3 + m0, m7 + m4, m11 + m8);
 	            planes[1].distance = -(m15 + m12);
 	            planes[1].normalize();
-	            
+
 	            vec3Set(planes[2].normal._array, m3 + m1, m7 + m5, m11 + m9);
 	            planes[2].distance = -(m15 + m13);
 	            planes[2].normalize();
-	            
+
 	            vec3Set(planes[3].normal._array, m3 - m1, m7 - m5, m11 - m9);
 	            planes[3].distance = -(m15 - m13);
 	            planes[3].normalize();
-	            
+
 	            vec3Set(planes[4].normal._array, m3 - m2, m7 - m6, m11 - m10);
 	            planes[4].distance = -(m15 - m14);
 	            planes[4].normalize();
-	            
+
 	            vec3Set(planes[5].normal._array, m3 + m2, m7 + m6, m11 + m10);
 	            planes[5].distance = -(m15 + m14);
 	            planes[5].normalize();
@@ -12845,7 +12948,8 @@
 	                vec3Set(vertices[5], -nearY * aspect, nearY, zNear);
 	                vec3Set(vertices[6], nearY * aspect, -nearY, zNear);
 	                vec3Set(vertices[7], nearY * aspect, nearY, zNear);
-	            } else { // Orthographic projection
+	            }
+	            else { // Orthographic projection
 	                var left = (-1 - m12) / m0;
 	                var right = (1 - m12) / m0;
 	                var top = (1 - m13) / m5;
@@ -12870,7 +12974,7 @@
 	         * @return {qtek.math.BoundingBox}
 	         */
 	        getTransformedBoundingBox: (function() {
-	            
+
 	            var tmpVec3 = vec3.create();
 
 	            return function(bbox, matrix) {
@@ -13456,6 +13560,16 @@
 	        updateProjectionMatrix: function() {
 	            this.projectionMatrix.ortho(this.left, this.right, this.bottom, this.top, this.near, this.far);
 	        },
+
+	        decomposeProjectionMatrix: function () {
+	            var m = this.projectionMatrix._array;
+	            this.left = (-1 - m[12]) / m[0];
+	            this.right = (1 - m[12]) / m[0];
+	            this.top = (1 - m[13]) / m[5];
+	            this.bottom = (-1 - m[13]) / m[5];
+	            this.near = -(-1 - m[14]) / m[10];
+	            this.far = -(1 - m[14]) / m[10];
+	        },
 	        /**
 	         * @return {qtek.camera.Orthographic}
 	         */
@@ -13518,6 +13632,14 @@
 	        updateProjectionMatrix: function() {
 	            var rad = this.fov / 180 * Math.PI;
 	            this.projectionMatrix.perspective(rad, this.aspect, this.near, this.far);
+	        },
+	        decomposeProjectionMatrix: function () {
+	            var m = this.projectionMatrix._array;
+	            var rad = Math.atan(1 / m[5]) * 2;
+	            this.fov = rad / Math.PI * 180;
+	            this.aspect = m[5] / m[0];
+	            this.near = m[14] / (m[10] - 1);
+	            this.far = m[14] / (m[10] + 1);
 	        },
 	        /**
 	         * @return {qtek.camera.Perspective}
@@ -17343,7 +17465,11 @@
 
 	            // Add precision
 	            this._fragmentProcessed = extensionStr.join('\n') + '\n'
-	                + ['precision', this.precision, 'float'].join(' ') + ';\n' + code;
+	                + ['precision', this.precision, 'float'].join(' ') + ';\n'
+	                + ['precision', this.precision, 'int'].join(' ') + ';\n'
+	                // depth texture may have precision problem on iOS device.
+	                + ['precision', this.precision, 'sampler2D'].join(' ') + ';\n'
+	                + code;
 	        },
 
 	        _parseUniforms: function () {
@@ -18468,8 +18594,12 @@
 	    Texture.FLOAT = glenum.FLOAT;
 	    Texture.HALF_FLOAT = 0x8D61;
 
+	    // ext.UNSIGNED_INT_24_8_WEBGL for WEBGL_depth_texture extension
+	    Texture.UNSIGNED_INT_24_8_WEBGL = 34042;
+
 	    /* PixelFormat */
 	    Texture.DEPTH_COMPONENT = glenum.DEPTH_COMPONENT;
+	    Texture.DEPTH_STENCIL = glenum.DEPTH_STENCIL;
 	    Texture.ALPHA = glenum.ALPHA;
 	    Texture.RGB = glenum.RGB;
 	    Texture.RGBA = glenum.RGBA;
@@ -20019,18 +20149,27 @@
 	            attachment = attachment || GL_COLOR_ATTACHMENT0;
 	            target = target || _gl.TEXTURE_2D;
 
-	            if (attachment === GL_DEPTH_ATTACHMENT) {
-
+	            if (attachment === GL_DEPTH_ATTACHMENT || attachment === glenum.DEPTH_STENCIL_ATTACHMENT) {
 	                var extension = glinfo.getExtension(_gl, 'WEBGL_depth_texture');
 
 	                if (!extension) {
 	                    console.error('Depth texture is not supported by the browser');
 	                    return;
 	                }
-	                if (texture.format !== glenum.DEPTH_COMPONENT) {
+	                if (texture.format !== glenum.DEPTH_COMPONENT
+	                    && texture.format !== glenum.DEPTH_STENCIL
+	                ) {
 	                    console.error('The texture attached to depth buffer is not a valid.');
 	                    return;
 	                }
+
+	                // Dispose render buffer created previous
+	                var renderBuffer = this._cache.get(KEY_RENDERBUFFER);
+	                if (renderBuffer) {
+	                    _gl.deleteRenderbuffer(renderBuffer);
+	                    this._cache.put(KEY_RENDERBUFFER, false);
+	                }
+
 	                this._cache.put(KEY_RENDERBUFFER_ATTACHED, false);
 	                this._cache.put(KEY_DEPTHTEXTURE_ATTACHED, true);
 	            }
@@ -21200,6 +21339,7 @@
 	    var ForwardRenderer = __webpack_require__(64);
 	    var Pass = __webpack_require__(39);
 	    var Matrix4 = __webpack_require__(26);
+	    var glinfo = __webpack_require__(46);
 
 	    function createFillCanvas(color) {
 	        var canvas = document.createElement('canvas');
@@ -21270,9 +21410,12 @@
 	                    attachTextureToSlot(gl, gBufferMat.shader, 'roughnessMap', roughnessMap, 1);
 	                }
 	                gBufferMat.shader.setUniform(gl, '1i', 'useRoughnessMap', +useRoughnessMap);
-
-	                gBufferMat.shader.setUniform(gl, '2f', 'uvRepeat', uvRepeat);
-	                gBufferMat.shader.setUniform(gl, '2f', 'uvOffset', uvOffset);
+	                if (uvRepeat != null) {
+	                    gBufferMat.shader.setUniform(gl, '2f', 'uvRepeat', uvRepeat);
+	                }
+	                if (uvOffset != null) {
+	                    gBufferMat.shader.setUniform(gl, '2f', 'uvOffset', uvOffset);
+	                }
 	            }
 
 	            previousNormalMap = normalMap;
@@ -21369,8 +21512,13 @@
 	            _gBufferTex2: new Texture2D({
 	                minFilter: Texture.NEAREST,
 	                magFilter: Texture.NEAREST,
-	                format: Texture.DEPTH_COMPONENT,
-	                type: Texture.UNSIGNED_INT
+	                // format: Texture.DEPTH_COMPONENT,
+	                // FIXME UNSIGNED_INT Can be 16 bit on ios. which is too low
+	                // https://www.khronos.org/registry/webgl/extensions/WEBGL_depth_texture/
+	                // type: Texture.UNSIGNED_INT
+
+	                format: Texture.DEPTH_STENCIL,
+	                type: Texture.UNSIGNED_INT_24_8_WEBGL
 	            }),
 
 	            // - R: albedo.r
@@ -21422,17 +21570,18 @@
 	        update: function (renderer, scene, camera) {
 	            var width = renderer.getWidth();
 	            var height = renderer.getHeight();
+	            var dpr = renderer.getDevicePixelRatio();
 
 	            var gl = renderer.gl;
 
 	            if (width !== this._gBufferTex1.width || height !== this._gBufferTex1.height) {
-	                this._resize(width, height);
+	                this._resize(width * dpr, height * dpr);
 	            }
 
 	            var frameBuffer = this._frameBuffer;
-	            frameBuffer.bind(renderer);
 	            frameBuffer.attach(renderer.gl, this._gBufferTex1);
-	            frameBuffer.attach(renderer.gl, this._gBufferTex2, renderer.gl.DEPTH_ATTACHMENT);
+	            frameBuffer.attach(renderer.gl, this._gBufferTex2, renderer.gl.DEPTH_STENCIL_ATTACHMENT);
+	            frameBuffer.bind(renderer);
 	            gl.clearColor(0, 0, 0, 0);
 	            gl.depthMask(true);
 	            gl.colorMask(true, true, true, true);
@@ -21889,7 +22038,7 @@
 	         */
 	        setViewport: function (x, y, width, height, dpr) {
 
-	            if (typeof(x) === 'object') {
+	            if (typeof x === 'object') {
 	                var obj = x;
 	                dpr = y;
 
@@ -21908,7 +22057,8 @@
 	                x: x,
 	                y: y,
 	                width: width,
-	                height: height
+	                height: height,
+	                devicePixelRatio: dpr
 	            };
 	        },
 
@@ -22050,7 +22200,8 @@
 	                renderedMeshCount: 0
 	            };
 
-	            var viewportSize = [this.viewport.width, this.viewport.height];
+	            var dpr = this.viewport.devicePixelRatio;
+	            var viewportSize = [this.viewport.width * dpr, this.viewport.height * dpr];
 
 	            // Calculate view and projection matrix
 	            mat4.copy(matrices.VIEW, camera.viewMatrix._array);
@@ -22892,9 +23043,26 @@
 	            })
 	        };
 	    }, {
-	        render: function (renderer, scene, camera, notDirectOutput) {
+	        /**
+	         * @param {qtek.Renderer} renderer
+	         * @param {qtek.Scene} scene
+	         * @param {qtek.Camera} camera
+	         * @param {Object} [opts]
+	         * @param {boolean} [opts.renderToTarget = false]
+	         * @param {boolean} [opts.notUpdateShadow = true]
+	         * @param {boolean} [opts.notUpdateScene = true]
+	         */
+	        render: function (renderer, scene, camera, opts) {
 
-	            scene.update(false, true);
+	            opts = opts || {};
+	            opts.renderToTarget = opts.renderToTarget || false;
+	            opts.notUpdateShadow = opts.notUpdateShadow || false;
+	            opts.notUpdateScene = opts.notUpdateScene || false;
+
+	            if (!opts.notUpdateScene) {
+	                scene.update(false, true);
+	            }
+
 	            camera.update(true);
 
 	            this._gBuffer.update(renderer, scene, camera);
@@ -22902,13 +23070,14 @@
 	            if (renderer.getWidth() !== this._lightAccumTex.width
 	                && renderer.getHeight() !== this._lightAccumTex.height
 	            ) {
-	                this._resize(renderer.getWidth(), renderer.getHeight());
+	                var dpr = renderer.getDevicePixelRatio();
+	                this._resize(renderer.getWidth() * dpr, renderer.getHeight() * dpr);
 	            }
 
 	            // Accumulate light buffer
-	            this._accumulateLightBuffer(renderer, scene, camera);
+	            this._accumulateLightBuffer(renderer, scene, camera, !opts.notUpdateShadow);
 
-	            if (!notDirectOutput) {
+	            if (!opts.renderToTarget) {
 	                this._outputPass.setUniform('texture', this._lightAccumTex);
 	                this._outputPass.render(renderer);
 	                // this._gBuffer.renderDebug(renderer, camera, 'normal');
@@ -22933,7 +23102,7 @@
 	            this._lightAccumTex.dirty();
 	        },
 
-	        _accumulateLightBuffer: function (renderer, scene, camera) {
+	        _accumulateLightBuffer: function (renderer, scene, camera, updateShadow) {
 	            var gl = renderer.gl;
 	            var lightAccumTex = this._lightAccumTex;
 	            var lightAccumFrameBuffer = this._lightAccumFrameBuffer;
@@ -22946,12 +23115,12 @@
 	            }
 
 	            var shadowMapPass = this.shadowMapPass;
-	            if (shadowMapPass) {
+	            if (shadowMapPass && updateShadow) {
 	                gl.clearColor(1, 1, 1, 1);
 	                this._prepareLightShadow(renderer, scene, camera);
 	            }
 
-	            this.trigger('beforelightaccumulate');
+	            this.trigger('beforelightaccumulate', renderer, scene, camera, updateShadow);
 
 	            lightAccumFrameBuffer.attach(gl, lightAccumTex);
 	            lightAccumFrameBuffer.bind(renderer);
@@ -23073,13 +23242,14 @@
 
 	            this._renderVolumeMeshList(renderer, camera, volumeMeshList);
 
+	            // if (shadowMapPass && updateShadow) { // FIXME Extension may have shadow rendered ignore updateShadow flag
 	            if (shadowMapPass) {
 	                shadowMapPass.restoreMaterial(
 	                    this._shadowCasters
 	                );
 	            }
 
-	            this.trigger('lightaccumulate');
+	            this.trigger('lightaccumulate', renderer, scene, camera);
 
 	            lightAccumFrameBuffer.unbind(renderer);
 	        },
@@ -23269,7 +23439,7 @@
 	                gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
 	                gl.depthFunc(gl.LEQUAL);
 
-	                var viewportSize = [renderer.viewport.width, renderer.viewport.height];
+	                var viewportSize = [this._lightAccumTex.width, this._lightAccumTex.height];
 
 	                for (var i = 0; i < volumeMeshList.length; i++) {
 	                    var volumeMesh = volumeMeshList[i];
@@ -27926,7 +28096,7 @@
 /***/ function(module, exports) {
 
 	
-	module.exports = "\n// http://blog.selfshadow.com/publications/s2013-shading-course/\n\n@export qtek.standard.vertex\n\n@import qtek.phong.vertex\n\n@end\n\n\n@export qtek.standard.fragment\n\n#define PI 3.14159265358979\n\n#define GLOSS_CHANEL 0\n#define ROUGHNESS_CHANEL 0\n#define METALNESS_CHANEL 1\n\nuniform mat4 viewInverse : VIEWINVERSE;\n\nvarying vec2 v_Texcoord;\nvarying vec3 v_Normal;\nvarying vec3 v_WorldPosition;\n\n#ifdef NORMALMAP_ENABLED\nvarying vec3 v_Tangent;\nvarying vec3 v_Bitangent;\nuniform sampler2D normalMap;\n#endif\n\n#ifdef DIFFUSEMAP_ENABLED\nuniform sampler2D diffuseMap;\n#endif\n\n#ifdef SPECULARMAP_ENABLED\nuniform sampler2D specularMap;\n#endif\n\n// I don't know why rougnessMap must be put before environmentMap. Or it will be wrong.\n#ifdef USE_ROUGHNESS\nuniform float roughness : 0.5;\n    #ifdef ROUGHNESSMAP_ENABLED\nuniform sampler2D roughnessMap;\n    #endif\n#else\nuniform float glossiness: 0.5;\n    #ifdef GLOSSMAP_ENABLED\nuniform sampler2D glossMap;\n    #endif\n#endif\n\n#ifdef METALNESSMAP_ENABLED\nuniform sampler2D metalnessMap;\n#endif\n\n#ifdef ENVIRONMENTMAP_ENABLED\nuniform samplerCube environmentMap;\n\n// https://seblagarde.wordpress.com/2012/09/29/image-based-lighting-approaches-and-parallax-corrected-cubemap/\n    #ifdef PARALLAX_CORRECTED\nuniform vec3 environmentBoxMin;\nuniform vec3 environmentBoxMax;\n    #endif\n\n#endif\n\n#ifdef BRDFLOOKUP_ENABLED\nuniform sampler2D brdfLookup;\n#endif\n\n#ifdef EMISSIVEMAP_ENABLED\nuniform sampler2D emissiveMap;\n#endif\n\n#ifdef SSAOMAP_ENABLED\n// For ssao prepass\nuniform sampler2D ssaoMap;\nuniform vec2 viewportSize : VIEWPORT_SIZE;\n#endif\n\nuniform vec3 color : [1.0, 1.0, 1.0];\nuniform float alpha : 1.0;\n\n\n#ifdef USE_METALNESS\n// metalness workflow\nuniform float metalness : 0.0;\n#else\n// specular workflow\nuniform vec3 specularColor : [0.1, 0.1, 0.1];\n#endif\n\nuniform vec3 emission : [0.0, 0.0, 0.0];\n\nuniform float emissionIntensity: 1;\n\n// Uniforms for wireframe\nuniform float lineWidth : 0.0;\nuniform vec3 lineColor : [0.0, 0.0, 0.0];\nvarying vec3 v_Barycentric;\n\n// For selection\nuniform vec3 mixColor: [1.0, 1.0, 0.0];\nuniform float mixIntensity: 0.0;\n\n// Max mipmap level of environment map\n#ifdef ENVIRONMENTMAP_PREFILTER\nuniform float maxMipmapLevel: 5;\n#endif\n\n#ifdef AMBIENT_LIGHT_COUNT\n@import qtek.header.ambient_light\n#endif\n\n#ifdef AMBIENT_SH_LIGHT_COUNT\n@import qtek.header.ambient_sh_light\n#endif\n\n#ifdef POINT_LIGHT_COUNT\n@import qtek.header.point_light\n#endif\n#ifdef DIRECTIONAL_LIGHT_COUNT\n@import qtek.header.directional_light\n#endif\n#ifdef SPOT_LIGHT_COUNT\n@import qtek.header.spot_light\n#endif\n\n// Import util functions and uniforms needed\n@import qtek.util.calculate_attenuation\n\n@import qtek.util.edge_factor\n\n@import qtek.util.rgbm\n\n@import qtek.util.srgb\n\n@import qtek.plugin.compute_shadow_map\n\n@import qtek.util.parallax_correct\n\n\nfloat G_Smith(float g, float ndv, float ndl)\n{\n    // float k = (roughness+1.0) * (roughness+1.0) * 0.125;\n    float roughness = 1.0 - g;\n    float k = roughness * roughness / 2.0;\n    float G1V = ndv / (ndv * (1.0 - k) + k);\n    float G1L = ndl / (ndl * (1.0 - k) + k);\n    return G1L * G1V;\n}\n// Fresnel\nvec3 F_Schlick(float ndv, vec3 spec) {\n    return spec + (1.0 - spec) * pow(1.0 - ndv, 5.0);\n}\n\nfloat D_Phong(float g, float ndh) {\n    // from black ops 2\n    float a = pow(8192.0, g);\n    return (a + 2.0) / 8.0 * pow(ndh, a);\n}\n\nfloat D_GGX(float g, float ndh) {\n    float r = 1.0 - g;\n    float a = r * r;\n    float tmp = ndh * ndh * (a - 1.0) + 1.0;\n    return a / (PI * tmp * tmp);\n}\n\n\nvoid main()\n{\n    vec4 outColor = vec4(color, alpha);\n    vec3 eyePos = viewInverse[3].xyz;\n    vec3 V = normalize(eyePos - v_WorldPosition);\n\n#ifdef DIFFUSEMAP_ENABLED\n    vec4 tex = texture2D(diffuseMap, v_Texcoord);\n    #ifdef SRGB_DECODE\n    tex = sRGBToLinear(tex);\n    #endif\n    outColor.rgb *= tex.rgb;\n    #ifdef DIFFUSEMAP_ALPHA_ALPHA\n    outColor.a *= tex.a;\n    #endif\n#endif\n\n\n#ifdef USE_METALNESS\n    float m = metalness;\n\n    #ifdef METALNESSMAP_ENABLED\n    float m2 = texture2D(metalnessMap, v_Texcoord)[METALNESS_CHANEL];\n    // Adjust the brightness\n    m = clamp(m2 + (m - 0.5) * 2.0, 0.0, 1.0);\n    #endif\n\n    vec3 baseColor = outColor.rgb;\n    outColor.rgb = baseColor * (1.0 - m);\n    vec3 spec = mix(vec3(0.04), baseColor, m);\n#else\n    vec3 spec = specularColor;\n#endif\n\n#ifdef USE_ROUGHNESS\n    float g = 1.0 - roughness;\n    #ifdef ROUGHNESSMAP_ENABLED\n    float g2 = 1.0 - texture2D(roughnessMap, v_Texcoord)[ROUGHNESS_CHANEL];\n    // Adjust the brightness\n    g = clamp(g2 + (g - 0.5) * 2.0, 0.0, 1.0);\n    #endif\n#else\n    float g = glossiness;\n    #ifdef GLOSSMAP_ENABLED\n    float g2 = texture2D(glossMap, v_Texcoord)[GLOSS_CHANEL];\n    // Adjust the brightness\n    g = clamp(g2 + (g - 0.5) * 2.0, 0.0, 1.0);\n    #endif\n#endif\n\n#ifdef SPECULARMAP_ENABLED\n    spec *= texture2D(specularMap, v_Texcoord).rgb;\n#endif\n\n    vec3 N = v_Normal;\n#ifdef NORMALMAP_ENABLED\n    if (dot(v_Tangent, v_Tangent) > 0.0) {\n        vec3 normalTexel = texture2D(normalMap, v_Texcoord).xyz;\n        if (dot(normalTexel, normalTexel) > 0.0) { // Valid normal map\n            N = normalTexel * 2.0 - 1.0;\n            mat3 tbn = mat3(v_Tangent, v_Bitangent, v_Normal);\n            // FIXME Why need to normalize again?\n            N = normalize(tbn * N);\n        }\n    }\n#endif\n\n    // Diffuse part of all lights\n    vec3 diffuseTerm = vec3(0.0, 0.0, 0.0);\n    // Specular part of all lights\n    vec3 specularTerm = vec3(0.0, 0.0, 0.0);\n\n    float ndv = clamp(dot(N, V), 0.0, 1.0);\n    vec3 fresnelTerm = F_Schlick(ndv, spec);\n\n#ifdef AMBIENT_LIGHT_COUNT\n    for(int i = 0; i < AMBIENT_LIGHT_COUNT; i++)\n    {\n        diffuseTerm += ambientLightColor[i];\n    }\n#endif\n\n#ifdef AMBIENT_SH_LIGHT_COUNT\n    for(int i = 0; i < AMBIENT_SH_LIGHT_COUNT; i++)\n    {\n        diffuseTerm += calcAmbientSHLight(i, N) * ambientSHLightColor[i];\n    }\n#endif\n\n#ifdef POINT_LIGHT_COUNT\n#if defined(POINT_LIGHT_SHADOWMAP_COUNT)\n    float shadowContribsPoint[POINT_LIGHT_COUNT];\n    if(shadowEnabled)\n    {\n        computeShadowOfPointLights(v_WorldPosition, shadowContribsPoint);\n    }\n#endif\n    for(int i = 0; i < POINT_LIGHT_COUNT; i++)\n    {\n\n        vec3 lightPosition = pointLightPosition[i];\n        vec3 lc = pointLightColor[i];\n        float range = pointLightRange[i];\n\n        vec3 L = lightPosition - v_WorldPosition;\n\n        // Calculate point light attenuation\n        float dist = length(L);\n        float attenuation = lightAttenuation(dist, range);\n        L /= dist;\n        vec3 H = normalize(L + V);\n        float ndl = clamp(dot(N, L), 0.0, 1.0);\n        float ndh = clamp(dot(N, H), 0.0, 1.0);\n\n        float shadowContrib = 1.0;\n#if defined(POINT_LIGHT_SHADOWMAP_COUNT)\n        if(shadowEnabled)\n        {\n            shadowContrib = shadowContribsPoint[i];\n        }\n#endif\n\n        vec3 li = lc * ndl * attenuation * shadowContrib;\n        diffuseTerm += li;\n        specularTerm += li * fresnelTerm * D_Phong(g, ndh);\n    }\n#endif\n\n#ifdef DIRECTIONAL_LIGHT_COUNT\n#if defined(DIRECTIONAL_LIGHT_SHADOWMAP_COUNT)\n    float shadowContribsDir[DIRECTIONAL_LIGHT_COUNT];\n    if(shadowEnabled)\n    {\n        computeShadowOfDirectionalLights(v_WorldPosition, shadowContribsDir);\n    }\n#endif\n    for(int i = 0; i < DIRECTIONAL_LIGHT_COUNT; i++)\n    {\n\n        vec3 L = -normalize(directionalLightDirection[i]);\n        vec3 lc = directionalLightColor[i];\n\n        vec3 H = normalize(L + V);\n        float ndl = clamp(dot(N, L), 0.0, 1.0);\n        float ndh = clamp(dot(N, H), 0.0, 1.0);\n\n        float shadowContrib = 1.0;\n#if defined(DIRECTIONAL_LIGHT_SHADOWMAP_COUNT)\n        if(shadowEnabled)\n        {\n            shadowContrib = shadowContribsDir[i];\n        }\n#endif\n\n        vec3 li = lc * ndl * shadowContrib;\n\n        diffuseTerm += li;\n        specularTerm += li * fresnelTerm * D_Phong(g, ndh);\n    }\n#endif\n\n#ifdef SPOT_LIGHT_COUNT\n#if defined(SPOT_LIGHT_SHADOWMAP_COUNT)\n    float shadowContribsSpot[SPOT_LIGHT_COUNT];\n    if(shadowEnabled)\n    {\n        computeShadowOfSpotLights(v_WorldPosition, shadowContribsSpot);\n    }\n#endif\n    for(int i = 0; i < SPOT_LIGHT_COUNT; i++)\n    {\n        vec3 lightPosition = spotLightPosition[i];\n        vec3 spotLightDirection = -normalize(spotLightDirection[i]);\n        vec3 lc = spotLightColor[i];\n        float range = spotLightRange[i];\n        float a = spotLightUmbraAngleCosine[i];\n        float b = spotLightPenumbraAngleCosine[i];\n        float falloffFactor = spotLightFalloffFactor[i];\n\n        vec3 L = lightPosition - v_WorldPosition;\n        // Calculate attenuation\n        float dist = length(L);\n        float attenuation = lightAttenuation(dist, range);\n\n        // Normalize light direction\n        L /= dist;\n        // Calculate spot light fall off\n        float c = dot(spotLightDirection, L);\n\n        float falloff;\n        // Fomular from real-time-rendering\n        falloff = clamp((c - a) /( b - a), 0.0, 1.0);\n        falloff = pow(falloff, falloffFactor);\n\n        vec3 H = normalize(L + V);\n        float ndl = clamp(dot(N, L), 0.0, 1.0);\n        float ndh = clamp(dot(N, H), 0.0, 1.0);\n\n        float shadowContrib = 1.0;\n#if defined(SPOT_LIGHT_SHADOWMAP_COUNT)\n        if (shadowEnabled)\n        {\n            shadowContrib = shadowContribsSpot[i];\n        }\n#endif\n\n        vec3 li = lc * attenuation * (1.0 - falloff) * shadowContrib * ndl;\n\n        diffuseTerm += li;\n        specularTerm += li * fresnelTerm * D_Phong(g, ndh);\n    }\n#endif\n\n    outColor.rgb *= diffuseTerm;\n\n    outColor.rgb += specularTerm;\n\n\n#ifdef ENVIRONMENTMAP_ENABLED\n\n    vec3 envWeight = g * fresnelTerm;\n    vec3 L = reflect(-V, N);\n\n    #ifdef PARALLAX_CORRECTED\n    L = parallaxCorrect(L, v_WorldPosition, environmentBoxMin, environmentBoxMax);\n    #endif\n\n    #ifdef ENVIRONMENTMAP_PREFILTER\n    // FIXME simply 1 minus roughness ?\n    float roughness = clamp(1.0 - g, 0.0, 1.0);\n    float bias = roughness * maxMipmapLevel;\n    // Only env map can have HDR\n    vec3 envTexel = decodeHDR(textureCubeLodEXT(environmentMap, L, bias)).rgb;\n\n        #ifdef BRDFLOOKUP_ENABLED\n    vec2 brdfParam = texture2D(brdfLookup, vec2(roughness, ndv)).xy;\n    envWeight = spec * brdfParam.x + brdfParam.y;\n        #endif\n\n    #else\n    vec3 envTexel = textureCube(environmentMap, L).xyz;\n    #endif\n\n    outColor.rgb += envTexel * envWeight;\n#endif\n\n#ifdef SSAOMAP_ENABLED\n    outColor.rgb *= texture2D(ssaoMap, gl_FragCoord.xy / viewportSize).rgb;\n#endif\n\n    vec3 lEmission = emission;\n#ifdef EMISSIVEMAP_ENABLED\n    lEmission *= texture2D(emissiveMap, v_Texcoord);\n#endif\n    outColor.rgb += lEmission * emissionIntensity;\n\n#ifdef GAMMA_ENCODE\n    // Not linear\n    outColor.rgb = pow(outColor.rgb, vec3(1 / 2.2));\n#endif\n\n    outColor.rgb = mix(outColor.rgb, mixColor, mixIntensity);\n\n    if(lineWidth > 0.)\n    {\n        outColor.rgb = mix(lineColor, vec3(outColor.rgb), edgeFactor(lineWidth));\n    }\n\n    gl_FragColor = encodeHDR(outColor);\n}\n\n@end\n\n\n@export qtek.physical.vertex\n\n@import qtek.standard.vertex\n\n@end\n\n@export qtek.physical.fragment\n\n@import qtek.standard.fragment\n\n@end";
+	module.exports = "\n// http://blog.selfshadow.com/publications/s2013-shading-course/\n\n@export qtek.standard.vertex\n\n@import qtek.phong.vertex\n\n@end\n\n\n@export qtek.standard.fragment\n\n#define PI 3.14159265358979\n\n#define GLOSS_CHANEL 0\n#define ROUGHNESS_CHANEL 0\n#define METALNESS_CHANEL 1\n\nuniform mat4 viewInverse : VIEWINVERSE;\n\nvarying vec2 v_Texcoord;\nvarying vec3 v_Normal;\nvarying vec3 v_WorldPosition;\n\n#ifdef NORMALMAP_ENABLED\nvarying vec3 v_Tangent;\nvarying vec3 v_Bitangent;\nuniform sampler2D normalMap;\n#endif\n\n#ifdef DIFFUSEMAP_ENABLED\nuniform sampler2D diffuseMap;\n#endif\n\n#ifdef SPECULARMAP_ENABLED\nuniform sampler2D specularMap;\n#endif\n\n// I don't know why rougnessMap must be put before environmentMap. Or it will be wrong.\n#ifdef USE_ROUGHNESS\nuniform float roughness : 0.5;\n    #ifdef ROUGHNESSMAP_ENABLED\nuniform sampler2D roughnessMap;\n    #endif\n#else\nuniform float glossiness: 0.5;\n    #ifdef GLOSSMAP_ENABLED\nuniform sampler2D glossMap;\n    #endif\n#endif\n\n#ifdef METALNESSMAP_ENABLED\nuniform sampler2D metalnessMap;\n#endif\n\n#ifdef ENVIRONMENTMAP_ENABLED\nuniform samplerCube environmentMap;\n\n// https://seblagarde.wordpress.com/2012/09/29/image-based-lighting-approaches-and-parallax-corrected-cubemap/\n    #ifdef PARALLAX_CORRECTED\nuniform vec3 environmentBoxMin;\nuniform vec3 environmentBoxMax;\n    #endif\n\n#endif\n\n#ifdef BRDFLOOKUP_ENABLED\nuniform sampler2D brdfLookup;\n#endif\n\n#ifdef EMISSIVEMAP_ENABLED\nuniform sampler2D emissiveMap;\n#endif\n\n#ifdef SSAOMAP_ENABLED\n// For ssao prepass\nuniform sampler2D ssaoMap;\nuniform vec2 viewportSize : VIEWPORT_SIZE;\n#endif\n\nuniform vec3 color : [1.0, 1.0, 1.0];\nuniform float alpha : 1.0;\n\n\n#ifdef USE_METALNESS\n// metalness workflow\nuniform float metalness : 0.0;\n#else\n// specular workflow\nuniform vec3 specularColor : [0.1, 0.1, 0.1];\n#endif\n\nuniform vec3 emission : [0.0, 0.0, 0.0];\n\nuniform float emissionIntensity: 1;\n\n// Uniforms for wireframe\nuniform float lineWidth : 0.0;\nuniform vec3 lineColor : [0.0, 0.0, 0.0];\nvarying vec3 v_Barycentric;\n\n// For selection\nuniform vec3 mixColor: [1.0, 1.0, 0.0];\nuniform float mixIntensity: 0.0;\n\n// Max mipmap level of environment map\n#ifdef ENVIRONMENTMAP_PREFILTER\nuniform float maxMipmapLevel: 5;\n#endif\n\n#ifdef AMBIENT_LIGHT_COUNT\n@import qtek.header.ambient_light\n#endif\n\n#ifdef AMBIENT_SH_LIGHT_COUNT\n@import qtek.header.ambient_sh_light\n#endif\n\n#ifdef POINT_LIGHT_COUNT\n@import qtek.header.point_light\n#endif\n#ifdef DIRECTIONAL_LIGHT_COUNT\n@import qtek.header.directional_light\n#endif\n#ifdef SPOT_LIGHT_COUNT\n@import qtek.header.spot_light\n#endif\n\n// Import util functions and uniforms needed\n@import qtek.util.calculate_attenuation\n\n@import qtek.util.edge_factor\n\n@import qtek.util.rgbm\n\n@import qtek.util.srgb\n\n@import qtek.plugin.compute_shadow_map\n\n@import qtek.util.parallax_correct\n\n\nfloat G_Smith(float g, float ndv, float ndl)\n{\n    // float k = (roughness+1.0) * (roughness+1.0) * 0.125;\n    float roughness = 1.0 - g;\n    float k = roughness * roughness / 2.0;\n    float G1V = ndv / (ndv * (1.0 - k) + k);\n    float G1L = ndl / (ndl * (1.0 - k) + k);\n    return G1L * G1V;\n}\n// Fresnel\nvec3 F_Schlick(float ndv, vec3 spec) {\n    return spec + (1.0 - spec) * pow(1.0 - ndv, 5.0);\n}\n\nfloat D_Phong(float g, float ndh) {\n    // from black ops 2\n    float a = pow(8192.0, g);\n    return (a + 2.0) / 8.0 * pow(ndh, a);\n}\n\nfloat D_GGX(float g, float ndh) {\n    float r = 1.0 - g;\n    float a = r * r;\n    float tmp = ndh * ndh * (a - 1.0) + 1.0;\n    return a / (PI * tmp * tmp);\n}\n\n\nvoid main()\n{\n    vec4 outColor = vec4(color, alpha);\n    vec3 eyePos = viewInverse[3].xyz;\n    vec3 V = normalize(eyePos - v_WorldPosition);\n\n#ifdef DIFFUSEMAP_ENABLED\n    vec4 tex = texture2D(diffuseMap, v_Texcoord);\n    #ifdef SRGB_DECODE\n    tex = sRGBToLinear(tex);\n    #endif\n    outColor.rgb *= tex.rgb;\n    #ifdef DIFFUSEMAP_ALPHA_ALPHA\n    outColor.a *= tex.a;\n    #endif\n#endif\n\n\n#ifdef USE_METALNESS\n    float m = metalness;\n\n    #ifdef METALNESSMAP_ENABLED\n    float m2 = texture2D(metalnessMap, v_Texcoord)[METALNESS_CHANEL];\n    // Adjust the brightness\n    m = clamp(m2 + (m - 0.5) * 2.0, 0.0, 1.0);\n    #endif\n\n    vec3 baseColor = outColor.rgb;\n    outColor.rgb = baseColor * (1.0 - m);\n    vec3 spec = mix(vec3(0.04), baseColor, m);\n#else\n    vec3 spec = specularColor;\n#endif\n\n#ifdef USE_ROUGHNESS\n    float g = 1.0 - roughness;\n    #ifdef ROUGHNESSMAP_ENABLED\n    float g2 = 1.0 - texture2D(roughnessMap, v_Texcoord)[ROUGHNESS_CHANEL];\n    // Adjust the brightness\n    g = clamp(g2 + (g - 0.5) * 2.0, 0.0, 1.0);\n    #endif\n#else\n    float g = glossiness;\n    #ifdef GLOSSMAP_ENABLED\n    float g2 = texture2D(glossMap, v_Texcoord)[GLOSS_CHANEL];\n    // Adjust the brightness\n    g = clamp(g2 + (g - 0.5) * 2.0, 0.0, 1.0);\n    #endif\n#endif\n\n#ifdef SPECULARMAP_ENABLED\n    spec *= texture2D(specularMap, v_Texcoord).rgb;\n#endif\n\n    vec3 N = v_Normal;\n#ifdef NORMALMAP_ENABLED\n    if (dot(v_Tangent, v_Tangent) > 0.0) {\n        vec3 normalTexel = texture2D(normalMap, v_Texcoord).xyz;\n        if (dot(normalTexel, normalTexel) > 0.0) { // Valid normal map\n            N = normalTexel * 2.0 - 1.0;\n            mat3 tbn = mat3(v_Tangent, v_Bitangent, v_Normal);\n            // FIXME Why need to normalize again?\n            N = normalize(tbn * N);\n        }\n    }\n#endif\n\n    // Diffuse part of all lights\n    vec3 diffuseTerm = vec3(0.0, 0.0, 0.0);\n    // Specular part of all lights\n    vec3 specularTerm = vec3(0.0, 0.0, 0.0);\n\n    float ndv = clamp(dot(N, V), 0.0, 1.0);\n    vec3 fresnelTerm = F_Schlick(ndv, spec);\n\n#ifdef AMBIENT_LIGHT_COUNT\n    for(int i = 0; i < AMBIENT_LIGHT_COUNT; i++)\n    {\n        diffuseTerm += ambientLightColor[i];\n    }\n#endif\n\n#ifdef AMBIENT_SH_LIGHT_COUNT\n    for(int i = 0; i < AMBIENT_SH_LIGHT_COUNT; i++)\n    {\n        diffuseTerm += calcAmbientSHLight(i, N) * ambientSHLightColor[i];\n    }\n#endif\n\n#ifdef POINT_LIGHT_COUNT\n#if defined(POINT_LIGHT_SHADOWMAP_COUNT)\n    float shadowContribsPoint[POINT_LIGHT_COUNT];\n    if(shadowEnabled)\n    {\n        computeShadowOfPointLights(v_WorldPosition, shadowContribsPoint);\n    }\n#endif\n    for(int i = 0; i < POINT_LIGHT_COUNT; i++)\n    {\n\n        vec3 lightPosition = pointLightPosition[i];\n        vec3 lc = pointLightColor[i];\n        float range = pointLightRange[i];\n\n        vec3 L = lightPosition - v_WorldPosition;\n\n        // Calculate point light attenuation\n        float dist = length(L);\n        float attenuation = lightAttenuation(dist, range);\n        L /= dist;\n        vec3 H = normalize(L + V);\n        float ndl = clamp(dot(N, L), 0.0, 1.0);\n        float ndh = clamp(dot(N, H), 0.0, 1.0);\n\n        float shadowContrib = 1.0;\n#if defined(POINT_LIGHT_SHADOWMAP_COUNT)\n        if(shadowEnabled)\n        {\n            shadowContrib = shadowContribsPoint[i];\n        }\n#endif\n\n        vec3 li = lc * ndl * attenuation * shadowContrib;\n        diffuseTerm += li;\n        specularTerm += li * fresnelTerm * D_Phong(g, ndh);\n    }\n#endif\n\n#ifdef DIRECTIONAL_LIGHT_COUNT\n#if defined(DIRECTIONAL_LIGHT_SHADOWMAP_COUNT)\n    float shadowContribsDir[DIRECTIONAL_LIGHT_COUNT];\n    if(shadowEnabled)\n    {\n        computeShadowOfDirectionalLights(v_WorldPosition, shadowContribsDir);\n    }\n#endif\n    for(int i = 0; i < DIRECTIONAL_LIGHT_COUNT; i++)\n    {\n\n        vec3 L = -normalize(directionalLightDirection[i]);\n        vec3 lc = directionalLightColor[i];\n\n        vec3 H = normalize(L + V);\n        float ndl = clamp(dot(N, L), 0.0, 1.0);\n        float ndh = clamp(dot(N, H), 0.0, 1.0);\n\n        float shadowContrib = 1.0;\n#if defined(DIRECTIONAL_LIGHT_SHADOWMAP_COUNT)\n        if(shadowEnabled)\n        {\n            shadowContrib = shadowContribsDir[i];\n        }\n#endif\n\n        vec3 li = lc * ndl * shadowContrib;\n\n        diffuseTerm += li;\n        specularTerm += li * fresnelTerm * D_Phong(g, ndh);\n    }\n#endif\n\n#ifdef SPOT_LIGHT_COUNT\n#if defined(SPOT_LIGHT_SHADOWMAP_COUNT)\n    float shadowContribsSpot[SPOT_LIGHT_COUNT];\n    if(shadowEnabled)\n    {\n        computeShadowOfSpotLights(v_WorldPosition, shadowContribsSpot);\n    }\n#endif\n    for(int i = 0; i < SPOT_LIGHT_COUNT; i++)\n    {\n        vec3 lightPosition = spotLightPosition[i];\n        vec3 spotLightDirection = -normalize(spotLightDirection[i]);\n        vec3 lc = spotLightColor[i];\n        float range = spotLightRange[i];\n        float a = spotLightUmbraAngleCosine[i];\n        float b = spotLightPenumbraAngleCosine[i];\n        float falloffFactor = spotLightFalloffFactor[i];\n\n        vec3 L = lightPosition - v_WorldPosition;\n        // Calculate attenuation\n        float dist = length(L);\n        float attenuation = lightAttenuation(dist, range);\n\n        // Normalize light direction\n        L /= dist;\n        // Calculate spot light fall off\n        float c = dot(spotLightDirection, L);\n\n        float falloff;\n        // Fomular from real-time-rendering\n        falloff = clamp((c - a) /( b - a), 0.0, 1.0);\n        falloff = pow(falloff, falloffFactor);\n\n        vec3 H = normalize(L + V);\n        float ndl = clamp(dot(N, L), 0.0, 1.0);\n        float ndh = clamp(dot(N, H), 0.0, 1.0);\n\n        float shadowContrib = 1.0;\n#if defined(SPOT_LIGHT_SHADOWMAP_COUNT)\n        if (shadowEnabled)\n        {\n            shadowContrib = shadowContribsSpot[i];\n        }\n#endif\n\n        vec3 li = lc * attenuation * (1.0 - falloff) * shadowContrib * ndl;\n\n        diffuseTerm += li;\n        specularTerm += li * fresnelTerm * D_Phong(g, ndh);\n    }\n#endif\n\n    outColor.rgb *= diffuseTerm;\n\n    outColor.rgb += specularTerm;\n\n\n#ifdef ENVIRONMENTMAP_ENABLED\n\n    vec3 envWeight = g * fresnelTerm;\n    vec3 L = reflect(-V, N);\n\n    #ifdef PARALLAX_CORRECTED\n    L = parallaxCorrect(L, v_WorldPosition, environmentBoxMin, environmentBoxMax);\n    #endif\n\n    #ifdef ENVIRONMENTMAP_PREFILTER\n    // FIXME simply 1 minus roughness ?\n    float rough = clamp(1.0 - g, 0.0, 1.0);\n    float bias = rough * maxMipmapLevel;\n    // Only env map can have HDR\n    vec3 envTexel = decodeHDR(textureCubeLodEXT(environmentMap, L, bias)).rgb;\n\n        #ifdef BRDFLOOKUP_ENABLED\n    vec2 brdfParam = texture2D(brdfLookup, vec2(rough, ndv)).xy;\n    envWeight = spec * brdfParam.x + brdfParam.y;\n        #endif\n\n    #else\n    vec3 envTexel = textureCube(environmentMap, L).xyz;\n    #endif\n\n    outColor.rgb += envTexel * envWeight;\n#endif\n\n#ifdef SSAOMAP_ENABLED\n    outColor.rgb *= texture2D(ssaoMap, gl_FragCoord.xy / viewportSize).rgb;\n#endif\n\n    vec3 lEmission = emission;\n#ifdef EMISSIVEMAP_ENABLED\n    lEmission *= texture2D(emissiveMap, v_Texcoord);\n#endif\n    outColor.rgb += lEmission * emissionIntensity;\n\n#ifdef GAMMA_ENCODE\n    // Not linear\n    outColor.rgb = pow(outColor.rgb, vec3(1 / 2.2));\n#endif\n\n    outColor.rgb = mix(outColor.rgb, mixColor, mixIntensity);\n\n    if(lineWidth > 0.)\n    {\n        outColor.rgb = mix(lineColor, vec3(outColor.rgb), edgeFactor(lineWidth));\n    }\n\n    gl_FragColor = encodeHDR(outColor);\n}\n\n@end\n\n\n@export qtek.physical.vertex\n\n@import qtek.standard.vertex\n\n@end\n\n@export qtek.physical.fragment\n\n@import qtek.standard.fragment\n\n@end";
 
 
 /***/ },
@@ -28372,7 +28542,7 @@
 /***/ function(module, exports) {
 
 	
-	module.exports = "@export qtek.compositor.kernel.gaussian_9\n// http://dev.theomader.com/gaussian-kernel-calculator/\n// array constructor supported in GLSL ES 3.00 only\nfloat gaussianKernel[9];\ngaussianKernel[0] = 0.07;\ngaussianKernel[1] = 0.09;\ngaussianKernel[2] = 0.12;\ngaussianKernel[3] = 0.14;\ngaussianKernel[4] = 0.16;\ngaussianKernel[5] = 0.14;\ngaussianKernel[6] = 0.12;\ngaussianKernel[7] = 0.09;\ngaussianKernel[7] = 0.07;\n\n@end\n\n@export qtek.compositor.kernel.gaussian_13\n\nfloat gaussianKernel[13];\n\ngaussianKernel[0] = 0.02;\ngaussianKernel[1] = 0.03;\ngaussianKernel[2] = 0.06;\ngaussianKernel[3] = 0.08;\ngaussianKernel[4] = 0.11;\ngaussianKernel[5] = 0.13;\ngaussianKernel[6] = 0.14;\ngaussianKernel[7] = 0.13;\ngaussianKernel[8] = 0.11;\ngaussianKernel[9] = 0.08;\ngaussianKernel[10] = 0.06;\ngaussianKernel[11] = 0.03;\ngaussianKernel[12] = 0.02;\n\n@end\n\n\n\n\n\n@export qtek.compositor.util.sample\n\n@import qtek.util.rgbm\n/* switch to pre-multiplied alpha to correctly blur transparent images */\n// PENDING\nvec4 sample(const in sampler2D texture, const in vec2 coord)\n{\n    vec4 tex = decodeHDR(texture2D(texture, coord));\n    // tex.rgb *= tex.a;\n    return tex;\n}\n@end\n\n@export qtek.compositor.gaussian_blur_h\n\nuniform sampler2D texture; // the texture with the scene you want to blur\nvarying vec2 v_Texcoord;\n\nuniform float blurSize : 2.0;\nuniform vec2 textureSize : [512.0, 512.0];\n\n@import qtek.compositor.util.sample\n\nvoid main (void)\n{\n    @import qtek.compositor.kernel.gaussian_9\n\n    vec2 off = blurSize / textureSize;\n    off.y = 0.0;\n\n    vec4 sum = vec4(0.0);\n    float weightAll = 0.0;\n\n    // blur in y (horizontal)\n    for (int i = 0; i < 9; i++) {\n        vec2 coord = clamp(v_Texcoord + float(i - 4) * off, vec2(0.0), vec2(1.0));\n        float w = gaussianKernel[i];\n        sum += decodeHDR(texture2D(texture, coord)) * w;\n        weightAll += w;\n    }\n\n    // sum.rgb /= sum.a + 0.0000001;\n\n    gl_FragColor = encodeHDR(sum / weightAll);\n}\n\n@end\n\n@export qtek.compositor.gaussian_blur_v\n\nuniform sampler2D texture;\nvarying vec2 v_Texcoord;\n\nuniform float blurSize : 2.0;\nuniform vec2 textureSize : [512.0, 512.0];\n\n@import qtek.compositor.util.sample\n\nvoid main(void)\n{\n    @import qtek.compositor.kernel.gaussian_9\n\n    vec2 off = blurSize / textureSize;\n    off.x = 0.0;\n\n    vec4 sum = vec4(0.0);\n    float weightAll = 0.0;\n\n    // blur in y (vertical)\n    for (int i = 0; i < 9; i++) {\n        vec2 coord = clamp(v_Texcoord + float(i - 4) * off, vec2(0.0), vec2(1.0));\n        float w = gaussianKernel[i];\n        sum += decodeHDR(texture2D(texture, coord)) * w;\n        weightAll += w;\n    }\n\n    // sum.rgb /= sum.a + 0.0000001;\n\n    gl_FragColor = encodeHDR(sum / weightAll);\n}\n\n@end\n\n@export qtek.compositor.box_blur\n\nuniform sampler2D texture;\nvarying vec2 v_Texcoord;\n\nuniform float blurSize : 3.0;\nuniform vec2 textureSize : [512.0, 512.0];\n\n@import qtek.compositor.util.sample\n\nvoid main(void)\n{\n\n    vec4 tex = texture2D(texture, v_Texcoord);\n    vec2 offset = blurSize / textureSize;\n\n    tex += sample(texture, v_Texcoord + vec2(offset.x, 0.0) );\n    tex += sample(texture, v_Texcoord + vec2(offset.x, offset.y) );\n    tex += sample(texture, v_Texcoord + vec2(-offset.x, offset.y) );\n    tex += sample(texture, v_Texcoord + vec2(0.0, offset.y) );\n    tex += sample(texture, v_Texcoord + vec2(-offset.x, 0.0) );\n    tex += sample(texture, v_Texcoord + vec2(-offset.x, -offset.y) );\n    tex += sample(texture, v_Texcoord + vec2(offset.x, -offset.y) );\n    tex += sample(texture, v_Texcoord + vec2(0.0, -offset.y) );\n\n    tex /= 9.0;\n\n    // tex.rgb /= tex.a + 0.0000001;\n\n    gl_FragColor = encodeHDR(tex);\n}\n\n@end\n\n\n\n\n\n// http://www.slideshare.net/DICEStudio/five-rendering-ideas-from-battlefield-3-need-for-speed-the-run\n@export qtek.compositor.hexagonal_blur_mrt_1\n\n// MRT in chrome\n// https://www.khronos.org/registry/webgl/sdk/tests/conformance/extensions/webgl-draw-buffers.html\n#extension GL_EXT_draw_buffers : require\n\nuniform sampler2D texture;\nvarying vec2 v_Texcoord;\n\nuniform float blurSize : 2.0;\n\nuniform vec2 textureSize : [512.0, 512.0];\n\nvoid main(void){\n    vec2 offset = blurSize / textureSize;\n\n    vec4 color = vec4(0.0);\n    // Top\n    for(int i = 0; i < 10; i++){\n        color += 1.0/10.0 * texture2D(texture, v_Texcoord + vec2(0.0, offset.y * float(i)) );\n    }\n    gl_FragData[0] = color;\n    vec4 color2 = vec4(0.0);\n    // Down left\n    for(int i = 0; i < 10; i++){\n        color2 += 1.0/10.0 * texture2D(texture, v_Texcoord - vec2(offset.x * float(i), offset.y * float(i)) );\n    }\n    gl_FragData[1] = (color + color2) / 2.0;\n}\n\n@end\n\n@export qtek.compositor.hexagonal_blur_mrt_2\n\nuniform sampler2D texture0;\nuniform sampler2D texture1;\n\nvarying vec2 v_Texcoord;\n\nuniform float blurSize : 2.0;\n\nuniform vec2 textureSize : [512.0, 512.0];\n\nvoid main(void){\n    vec2 offset = blurSize / textureSize;\n\n    vec4 color1 = vec4(0.0);\n    // Down left\n    for(int i = 0; i < 10; i++){\n        color1 += 1.0/10.0 * texture2D(texture0, v_Texcoord - vec2(offset.x * float(i), offset.y * float(i)) );\n    }\n    vec4 color2 = vec4(0.0);\n    // Down right\n    for(int i = 0; i < 10; i++){\n        color2 += 1.0/10.0 * texture2D(texture1, v_Texcoord + vec2(offset.x * float(i), -offset.y * float(i)) );\n    }\n\n    gl_FragColor = (color1 + color2) / 2.0;\n}\n\n@end";
+	module.exports = "@export qtek.compositor.kernel.gaussian_9\n// http://dev.theomader.com/gaussian-kernel-calculator/\n// array constructor supported in GLSL ES 3.00 only\nfloat gaussianKernel[9];\ngaussianKernel[0] = 0.07;\ngaussianKernel[1] = 0.09;\ngaussianKernel[2] = 0.12;\ngaussianKernel[3] = 0.14;\ngaussianKernel[4] = 0.16;\ngaussianKernel[5] = 0.14;\ngaussianKernel[6] = 0.12;\ngaussianKernel[7] = 0.09;\ngaussianKernel[8] = 0.07;\n@end\n\n@export qtek.compositor.kernel.gaussian_13\n\nfloat gaussianKernel[13];\n\ngaussianKernel[0] = 0.02;\ngaussianKernel[1] = 0.03;\ngaussianKernel[2] = 0.06;\ngaussianKernel[3] = 0.08;\ngaussianKernel[4] = 0.11;\ngaussianKernel[5] = 0.13;\ngaussianKernel[6] = 0.14;\ngaussianKernel[7] = 0.13;\ngaussianKernel[8] = 0.11;\ngaussianKernel[9] = 0.08;\ngaussianKernel[10] = 0.06;\ngaussianKernel[11] = 0.03;\ngaussianKernel[12] = 0.02;\n\n@end\n\n\n\n\n\n@export qtek.compositor.util.sample\n\n@import qtek.util.rgbm\n/* switch to pre-multiplied alpha to correctly blur transparent images */\n// PENDING\nvec4 sample(const in sampler2D texture, const in vec2 coord)\n{\n    vec4 tex = decodeHDR(texture2D(texture, coord));\n    // tex.rgb *= tex.a;\n    return tex;\n}\n@end\n\n@export qtek.compositor.gaussian_blur_h\n\nuniform sampler2D texture; // the texture with the scene you want to blur\nvarying vec2 v_Texcoord;\n\nuniform float blurSize : 2.0;\nuniform vec2 textureSize : [512.0, 512.0];\n\n@import qtek.compositor.util.sample\n\nvoid main (void)\n{\n    @import qtek.compositor.kernel.gaussian_9\n\n    vec2 off = blurSize / textureSize;\n    off.y = 0.0;\n\n    vec4 sum = vec4(0.0);\n    float weightAll = 0.0;\n\n    // blur in y (horizontal)\n    for (int i = 0; i < 9; i++) {\n        vec2 coord = clamp(v_Texcoord + float(i - 4) * off, vec2(0.0), vec2(1.0));\n        float w = gaussianKernel[i];\n        sum += decodeHDR(texture2D(texture, coord)) * w;\n        weightAll += w;\n    }\n\n    // sum.rgb /= sum.a + 0.0000001;\n\n    gl_FragColor = encodeHDR(sum / weightAll);\n}\n\n@end\n\n@export qtek.compositor.gaussian_blur_v\n\nuniform sampler2D texture;\nvarying vec2 v_Texcoord;\n\nuniform float blurSize : 2.0;\nuniform vec2 textureSize : [512.0, 512.0];\n\n@import qtek.compositor.util.sample\n\nvoid main(void)\n{\n    @import qtek.compositor.kernel.gaussian_9\n\n    vec2 off = blurSize / textureSize;\n    off.x = 0.0;\n\n    vec4 sum = vec4(0.0);\n    float weightAll = 0.0;\n\n    // blur in y (vertical)\n    for (int i = 0; i < 9; i++) {\n        vec2 coord = clamp(v_Texcoord + float(i - 4) * off, vec2(0.0), vec2(1.0));\n        float w = gaussianKernel[i];\n        sum += decodeHDR(texture2D(texture, coord)) * w;\n        weightAll += w;\n    }\n\n    // sum.rgb /= sum.a + 0.0000001;\n\n    gl_FragColor = encodeHDR(sum / weightAll);\n}\n\n@end\n\n@export qtek.compositor.box_blur\n\nuniform sampler2D texture;\nvarying vec2 v_Texcoord;\n\nuniform float blurSize : 3.0;\nuniform vec2 textureSize : [512.0, 512.0];\n\n@import qtek.compositor.util.sample\n\nvoid main(void)\n{\n\n    vec4 tex = texture2D(texture, v_Texcoord);\n    vec2 offset = blurSize / textureSize;\n\n    tex += sample(texture, v_Texcoord + vec2(offset.x, 0.0) );\n    tex += sample(texture, v_Texcoord + vec2(offset.x, offset.y) );\n    tex += sample(texture, v_Texcoord + vec2(-offset.x, offset.y) );\n    tex += sample(texture, v_Texcoord + vec2(0.0, offset.y) );\n    tex += sample(texture, v_Texcoord + vec2(-offset.x, 0.0) );\n    tex += sample(texture, v_Texcoord + vec2(-offset.x, -offset.y) );\n    tex += sample(texture, v_Texcoord + vec2(offset.x, -offset.y) );\n    tex += sample(texture, v_Texcoord + vec2(0.0, -offset.y) );\n\n    tex /= 9.0;\n\n    // tex.rgb /= tex.a + 0.0000001;\n\n    gl_FragColor = encodeHDR(tex);\n}\n\n@end\n\n\n\n\n\n// http://www.slideshare.net/DICEStudio/five-rendering-ideas-from-battlefield-3-need-for-speed-the-run\n@export qtek.compositor.hexagonal_blur_mrt_1\n\n// MRT in chrome\n// https://www.khronos.org/registry/webgl/sdk/tests/conformance/extensions/webgl-draw-buffers.html\n#extension GL_EXT_draw_buffers : require\n\nuniform sampler2D texture;\nvarying vec2 v_Texcoord;\n\nuniform float blurSize : 2.0;\n\nuniform vec2 textureSize : [512.0, 512.0];\n\nvoid main(void){\n    vec2 offset = blurSize / textureSize;\n\n    vec4 color = vec4(0.0);\n    // Top\n    for(int i = 0; i < 10; i++){\n        color += 1.0/10.0 * texture2D(texture, v_Texcoord + vec2(0.0, offset.y * float(i)) );\n    }\n    gl_FragData[0] = color;\n    vec4 color2 = vec4(0.0);\n    // Down left\n    for(int i = 0; i < 10; i++){\n        color2 += 1.0/10.0 * texture2D(texture, v_Texcoord - vec2(offset.x * float(i), offset.y * float(i)) );\n    }\n    gl_FragData[1] = (color + color2) / 2.0;\n}\n\n@end\n\n@export qtek.compositor.hexagonal_blur_mrt_2\n\nuniform sampler2D texture0;\nuniform sampler2D texture1;\n\nvarying vec2 v_Texcoord;\n\nuniform float blurSize : 2.0;\n\nuniform vec2 textureSize : [512.0, 512.0];\n\nvoid main(void){\n    vec2 offset = blurSize / textureSize;\n\n    vec4 color1 = vec4(0.0);\n    // Down left\n    for(int i = 0; i < 10; i++){\n        color1 += 1.0/10.0 * texture2D(texture0, v_Texcoord - vec2(offset.x * float(i), offset.y * float(i)) );\n    }\n    vec4 color2 = vec4(0.0);\n    // Down right\n    for(int i = 0; i < 10; i++){\n        color2 += 1.0/10.0 * texture2D(texture1, v_Texcoord + vec2(offset.x * float(i), -offset.y * float(i)) );\n    }\n\n    gl_FragColor = (color1 + color2) / 2.0;\n}\n\n@end";
 
 
 /***/ },
@@ -28428,7 +28598,7 @@
 /***/ function(module, exports) {
 
 	
-	module.exports = "// HDR Pipeline\n@export qtek.compositor.hdr.bright\n\nuniform sampler2D texture;\n\nuniform float threshold : 1;\nuniform float scale : 1.0;\n\nuniform vec2 textureSize: [512, 512];\n\nvarying vec2 v_Texcoord;\n\nconst vec3 lumWeight = vec3(0.2125, 0.7154, 0.0721);\n\n@import qtek.util.rgbm\n\n\n// 3-tap median filter\nvec3 median(vec3 a, vec3 b, vec3 c)\n{\n    return a + b + c - min(min(a, b), c) - max(max(a, b), c);\n}\n\nvoid main()\n{\n    vec3 texel = decodeHDR(texture2D(texture, v_Texcoord)).rgb;\n\n#ifdef ANTI_FLICKER\n    // Use median filter to reduce noise\n    // https://github.com/keijiro/KinoBloom/blob/master/Assets/Kino/Bloom/Shader/Bloom.cginc#L96\n    vec3 d = 1.0 / textureSize.xyx * vec3(1.0, 1.0, 0.0);\n\n    vec3 s1 = decodeHDR(texture2D(texture, v_Texcoord - d.xz)).rgb;\n    vec3 s2 = decodeHDR(texture2D(texture, v_Texcoord + d.xz)).rgb;\n    vec3 s3 = decodeHDR(texture2D(texture, v_Texcoord - d.zy)).rgb;\n    vec3 s4 = decodeHDR(texture2D(texture, v_Texcoord + d.zy)).rgb;\n    texel = median(median(texel, s1, s2), s3, s4);\n\n#endif\n\n    float lum = dot(texel, lumWeight);\n    if (lum > threshold)\n    {\n        gl_FragColor.rgb = texel * scale;\n    }\n    else\n    {\n        gl_FragColor.rgb = vec3(0.0);\n    }\n    gl_FragColor.a = 1.0;\n\n    gl_FragColor = encodeHDR(gl_FragColor);\n}\n@end\n\n@export qtek.compositor.hdr.log_lum\n\nvarying vec2 v_Texcoord;\n\nuniform sampler2D texture;\n\nconst vec3 w = vec3(0.2125, 0.7154, 0.0721);\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    vec4 tex = decodeHDR(texture2D(texture, v_Texcoord));\n    float luminance = dot(tex.rgb, w);\n    luminance = log(luminance + 0.001);\n\n    gl_FragColor = encodeHDR(vec4(vec3(luminance), 1.0));\n}\n\n@end\n\n@export qtek.compositor.hdr.lum_adaption\nvarying vec2 v_Texcoord;\n\nuniform sampler2D adaptedLum;\nuniform sampler2D currentLum;\n\nuniform float frameTime : 0.02;\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    float fAdaptedLum = decodeHDR(texture2D(adaptedLum, vec2(0.5, 0.5))).r;\n    float fCurrentLum = exp(encodeHDR(texture2D(currentLum, vec2(0.5, 0.5))).r);\n\n    fAdaptedLum += (fCurrentLum - fAdaptedLum) * (1.0 - pow(0.98, 30.0 * frameTime));\n    gl_FragColor = encodeHDR(vec4(vec3(fAdaptedLum), 1.0));\n}\n@end\n\n// Tone mapping with gamma correction\n// http://filmicgames.com/archives/75\n@export qtek.compositor.hdr.tonemapping\n\nuniform sampler2D texture;\nuniform sampler2D bloom;\nuniform sampler2D lensflare;\nuniform sampler2D lensdirt;\n\nuniform sampler2D lum;\n\nuniform float exposure : 1.0;\nuniform float bloomIntensity : 0.25;\n\nvarying vec2 v_Texcoord;\n\nconst vec3 whiteScale = vec3(11.2);\n\nvec3 uncharted2ToneMap(vec3 x)\n{\n    const float A = 0.22;   // Shoulder Strength\n    const float B = 0.30;   // Linear Strength\n    const float C = 0.10;   // Linear Angle\n    const float D = 0.20;   // Toe Strength\n    const float E = 0.01;   // Toe Numerator\n    const float F = 0.30;   // Toe Denominator\n\n    return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;\n}\n\nvec3 filmicToneMap(vec3 color)\n{\n    vec3 x = max(vec3(0.0), color - 0.004);\n    return (x*(6.2*x+0.5))/(x*(6.2*x+1.7)+0.06);\n}\n\nvec3 ACESToneMapping(vec3 color)\n{\n    const float A = 2.51;\n    const float B = 0.03;\n    const float C = 2.43;\n    const float D = 0.59;\n    const float E = 0.14;\n    return (color * (A * color + B)) / (color * (C * color + D) + E);\n}\n\nfloat eyeAdaption(float fLum)\n{\n    return mix(0.2, fLum, 0.5);\n}\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    vec3 tex = vec3(0.0);\n    float a = 1.0;\n#ifdef TEXTURE_ENABLED\n    vec4 res = decodeHDR(texture2D(texture, v_Texcoord));\n    a = res.a;\n    tex = res.rgb;\n#endif\n\n#ifdef BLOOM_ENABLED\n    tex += decodeHDR(texture2D(bloom, v_Texcoord)).rgb * bloomIntensity;\n#endif\n\n#ifdef LENSFLARE_ENABLED\n    tex += decodeHDR(texture2D(lensflare, v_Texcoord)).rgb * texture2D(lensdirt, v_Texcoord).rgb;\n#endif\n\n// Adjust exposure\n// From KlayGE\n#ifdef LUM_ENABLED\n    float fLum = texture2D(lum, vec2(0.5, 0.5)).r;\n    float adaptedLumDest = 3.0 / (max(0.1, 1.0 + 10.0*eyeAdaption(fLum)));\n    float exposureBias = adaptedLumDest * exposure;\n#else\n    float exposureBias = exposure;\n#endif\n    tex *= exposureBias;\n\n    // Tone mapping\n    // vec3 color = uncharted2ToneMap(tex) / uncharted2ToneMap(whiteScale);\n    // vec3 color = filmicToneMap(tex);\n    vec3 color = ACESToneMapping(tex);\n\n    color = pow(color, vec3(1.0 / 2.2));\n\n    gl_FragColor = encodeHDR(vec4(color, a));\n\n#ifdef DEBUG\n    // Debug output original\n    #if DEBUG == 1\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(texture, v_Texcoord)));\n    // Debug output bloom\n    #elif DEBUG == 2\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(bloom, v_Texcoord)).rgb * bloomIntensity);\n    // Debug output lensflare\n    #elif DEBUG == 3\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(lensflare, v_Texcoord)));\n    #endif\n#endif\n}\n\n@end";
+	module.exports = "// HDR Pipeline\n@export qtek.compositor.hdr.bright\n\nuniform sampler2D texture;\n\nuniform float threshold : 1;\nuniform float scale : 1.0;\n\nuniform vec2 textureSize: [512, 512];\n\nvarying vec2 v_Texcoord;\n\nconst vec3 lumWeight = vec3(0.2125, 0.7154, 0.0721);\n\n@import qtek.util.rgbm\n\n\n// 3-tap median filter\nvec3 median(vec3 a, vec3 b, vec3 c)\n{\n    return a + b + c - min(min(a, b), c) - max(max(a, b), c);\n}\n\nvoid main()\n{\n    vec3 texel = decodeHDR(texture2D(texture, v_Texcoord)).rgb;\n\n#ifdef ANTI_FLICKER\n    // Use median filter to reduce noise\n    // https://github.com/keijiro/KinoBloom/blob/master/Assets/Kino/Bloom/Shader/Bloom.cginc#L96\n    vec3 d = 1.0 / textureSize.xyx * vec3(1.0, 1.0, 0.0);\n\n    vec3 s1 = decodeHDR(texture2D(texture, v_Texcoord - d.xz)).rgb;\n    vec3 s2 = decodeHDR(texture2D(texture, v_Texcoord + d.xz)).rgb;\n    vec3 s3 = decodeHDR(texture2D(texture, v_Texcoord - d.zy)).rgb;\n    vec3 s4 = decodeHDR(texture2D(texture, v_Texcoord + d.zy)).rgb;\n    texel = median(median(texel, s1, s2), s3, s4);\n\n#endif\n\n    float lum = dot(texel, lumWeight);\n    vec4 color;\n    if (lum > threshold)\n    {\n        color.rgb = texel * scale;\n    }\n    else\n    {\n        color.rgb = vec3(0.0);\n    }\n    color.a = 1.0;\n\n    gl_FragColor = encodeHDR(color);\n}\n@end\n\n@export qtek.compositor.hdr.log_lum\n\nvarying vec2 v_Texcoord;\n\nuniform sampler2D texture;\n\nconst vec3 w = vec3(0.2125, 0.7154, 0.0721);\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    vec4 tex = decodeHDR(texture2D(texture, v_Texcoord));\n    float luminance = dot(tex.rgb, w);\n    luminance = log(luminance + 0.001);\n\n    gl_FragColor = encodeHDR(vec4(vec3(luminance), 1.0));\n}\n\n@end\n\n@export qtek.compositor.hdr.lum_adaption\nvarying vec2 v_Texcoord;\n\nuniform sampler2D adaptedLum;\nuniform sampler2D currentLum;\n\nuniform float frameTime : 0.02;\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    float fAdaptedLum = decodeHDR(texture2D(adaptedLum, vec2(0.5, 0.5))).r;\n    float fCurrentLum = exp(encodeHDR(texture2D(currentLum, vec2(0.5, 0.5))).r);\n\n    fAdaptedLum += (fCurrentLum - fAdaptedLum) * (1.0 - pow(0.98, 30.0 * frameTime));\n    gl_FragColor = encodeHDR(vec4(vec3(fAdaptedLum), 1.0));\n}\n@end\n\n// Tone mapping with gamma correction\n// http://filmicgames.com/archives/75\n@export qtek.compositor.hdr.tonemapping\n\nuniform sampler2D texture;\nuniform sampler2D bloom;\nuniform sampler2D lensflare;\nuniform sampler2D lensdirt;\n\nuniform sampler2D lum;\n\nuniform float exposure : 1.0;\nuniform float bloomIntensity : 0.25;\nuniform float lensflareIntensity : 1;\n\nvarying vec2 v_Texcoord;\n\nconst vec3 whiteScale = vec3(11.2);\n\nvec3 uncharted2ToneMap(vec3 x)\n{\n    const float A = 0.22;   // Shoulder Strength\n    const float B = 0.30;   // Linear Strength\n    const float C = 0.10;   // Linear Angle\n    const float D = 0.20;   // Toe Strength\n    const float E = 0.01;   // Toe Numerator\n    const float F = 0.30;   // Toe Denominator\n\n    return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;\n}\n\nvec3 filmicToneMap(vec3 color)\n{\n    vec3 x = max(vec3(0.0), color - 0.004);\n    return (x*(6.2*x+0.5))/(x*(6.2*x+1.7)+0.06);\n}\n\nvec3 ACESToneMapping(vec3 color)\n{\n    const float A = 2.51;\n    const float B = 0.03;\n    const float C = 2.43;\n    const float D = 0.59;\n    const float E = 0.14;\n    return (color * (A * color + B)) / (color * (C * color + D) + E);\n}\n\nfloat eyeAdaption(float fLum)\n{\n    return mix(0.2, fLum, 0.5);\n}\n\n@import qtek.util.rgbm\n\nvoid main()\n{\n    vec3 tex = vec3(0.0);\n    float a = 1.0;\n#ifdef TEXTURE_ENABLED\n    vec4 res = decodeHDR(texture2D(texture, v_Texcoord));\n    a = res.a;\n    tex = res.rgb;\n#endif\n\n#ifdef BLOOM_ENABLED\n    tex += decodeHDR(texture2D(bloom, v_Texcoord)).rgb * bloomIntensity;\n#endif\n\n#ifdef LENSFLARE_ENABLED\n    tex += decodeHDR(texture2D(lensflare, v_Texcoord)).rgb * texture2D(lensdirt, v_Texcoord).rgb * lensflareIntensity;\n#endif\n\n// Adjust exposure\n// From KlayGE\n#ifdef LUM_ENABLED\n    float fLum = texture2D(lum, vec2(0.5, 0.5)).r;\n    float adaptedLumDest = 3.0 / (max(0.1, 1.0 + 10.0*eyeAdaption(fLum)));\n    float exposureBias = adaptedLumDest * exposure;\n#else\n    float exposureBias = exposure;\n#endif\n    tex *= exposureBias;\n\n    // Tone mapping\n    // vec3 color = uncharted2ToneMap(tex) / uncharted2ToneMap(whiteScale);\n    // vec3 color = filmicToneMap(tex);\n    vec3 color = ACESToneMapping(tex);\n\n    color = pow(color, vec3(1.0 / 2.2));\n\n    gl_FragColor = encodeHDR(vec4(color, a));\n\n#ifdef DEBUG\n    // Debug output original\n    #if DEBUG == 1\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(texture, v_Texcoord)));\n    // Debug output bloom\n    #elif DEBUG == 2\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(bloom, v_Texcoord)).rgb * bloomIntensity);\n    // Debug output lensflare\n    #elif DEBUG == 3\n    gl_FragColor = encodeHDR(decodeHDR(texture2D(lensflare, v_Texcoord).rgb * lensflareIntensity));\n    #endif\n#endif\n}\n\n@end";
 
 
 /***/ },
@@ -29096,6 +29266,17 @@
 	        constructor: Matrix2,
 
 	        /**
+	         * Set components from array
+	         * @param  {Float32Array|number[]} arr
+	         */
+	        setArray: function (arr) {
+	            for (var i = 0; i < this._array.length; i++) {
+	                this._array[i] = arr[i];
+	            }
+	            this._dirty = true;
+	            return this;
+	        },
+	        /**
 	         * Clone a new Matrix2
 	         * @return {qtek.math.Matrix2}
 	         */
@@ -29374,6 +29555,17 @@
 	        constructor: Matrix2d,
 
 	        /**
+	         * Set components from array
+	         * @param  {Float32Array|number[]} arr
+	         */
+	        setArray: function (arr) {
+	            for (var i = 0; i < this._array.length; i++) {
+	                this._array[i] = arr[i];
+	            }
+	            this._dirty = true;
+	            return this;
+	        },
+	        /**
 	         * Clone a new Matrix2d
 	         * @return {qtek.math.Matrix2d}
 	         */
@@ -29635,6 +29827,17 @@
 
 	        constructor: Matrix3,
 
+	        /**
+	         * Set components from array
+	         * @param  {Float32Array|number[]} arr
+	         */
+	        setArray: function (arr) {
+	            for (var i = 0; i < this._array.length; i++) {
+	                this._array[i] = arr[i];
+	            }
+	            this._dirty = true;
+	            return this;
+	        },
 	        /**
 	         * Calculate the adjugate of self, in-place
 	         * @return {qtek.math.Matrix3}
@@ -34461,12 +34664,115 @@
 	
 
 	    var Base = __webpack_require__(4);
+	    var Camera = __webpack_require__(32);
+	    var Matrix4 = __webpack_require__(26);
 
-	    var VRRenderer = Base.extend(function () {
+	    var tmpProjectionMatrix = new Matrix4();
 
+	    var StereoCamera = Base.extend(function () {
+	        return {
+
+	            aspect: 0.5,
+
+	            _leftCamera: new Camera(),
+
+	            _rightCamera: new Camera(),
+
+	            _eyeLeft: new Matrix4(),
+	            _eyeRight: new Matrix4(),
+
+	            _frameData: null
+	        };
 	    }, {
 
+	        updateFromCamera: function (camera, focus, zoom, eyeSep) {
+	            focus = focus == null ? 10 : focus;
+	            zoom = zoom == null ? 1 : zoom;
+	            eyeSep = eyeSep == null ? 0.064 : eyeSep;
+
+	            var fov = camera.fov;
+	            var aspect = camera.aspect * this.aspect;
+	            var near = camera.near;
+
+	            // Off-axis stereoscopic effect based on
+	            // http://paulbourke.net/stereographics/stereorender/
+
+	            tmpProjectionMatrix.copy(camera.projectionMatrix);
+	            var eyeSep = eyeSep / 2;
+	            var eyeSepOnProjection = eyeSep * near / focus;
+	            var ymax = (near * Math.tan(Math.PI / 180 * fov * 0.5 ) ) / zoom;
+	            var xmin, xmax;
+
+	            // translate xOffset
+	            this._eyeLeft._array[12] = - eyeSep;
+	            this._eyeRight._array[12] = eyeSep;
+
+	            // for left eye
+	            xmin = - ymax * aspect + eyeSepOnProjection;
+	            xmax = ymax * aspect + eyeSepOnProjection;
+
+	            tmpProjectionMatrix._array[0] = 2 * near / (xmax - xmin);
+	            tmpProjectionMatrix._array[8] = (xmax + xmin ) / (xmax - xmin);
+
+	            this._leftCamera.projectionMatrix.copy(tmpProjectionMatrix);
+
+	            // for right eye
+	            xmin = - ymax * aspect - eyeSepOnProjection;
+	            xmax = ymax * aspect - eyeSepOnProjection;
+
+	            tmpProjectionMatrix._array[0] = 2 * near / (xmax - xmin);
+	            tmpProjectionMatrix._array[8] = (xmax + xmin ) / (xmax - xmin);
+
+	            this._rightCamera.projectionMatrix.copy(tmpProjectionMatrix);
+
+	            this._leftCamera.worldTransform
+	                .copy(camera.worldTransform)
+	                .multiply(this._eyeLeft);
+
+	            this._rightCamera.worldTransform
+	                .copy(camera.worldTransform)
+	                .multiply(this._eyeRight);
+
+	            this._leftCamera.decomposeWorldTransform();
+	            this._leftCamera.decomposeProjectionMatrix();
+
+	            this._rightCamera.decomposeWorldTransform();
+	            this._rightCamera.decomposeProjectionMatrix();
+	        },
+
+	        updateFromVRDisplay: function (vrDisplay) {
+
+	            if (typeof VRFrameData === 'undefined') {
+	                return;
+	            }
+
+	            var frameData = this._frameData || (this._frameData = new VRFrameData());
+	            vrDisplay.getFrameData(frameData);
+	            var leftCamera = this._leftCamera;
+	            var rightCamera = this._rightCamera;
+
+	            leftCamera.projectionMatrix.setArray(frameData.leftProjectionMatrix);
+	            leftCamera.decomposeProjectionMatrix();
+	            leftCamera.viewMatrix.setArray(frameData.leftViewMatrix);
+	            leftCamera.setViewMatrix(leftCamera.viewMatrix);
+
+	            rightCamera.projectionMatrix.setArray(frameData.rightProjectionMatrix);
+	            rightCamera.decomposeProjectionMatrix();
+	            rightCamera.viewMatrix.setArray(frameData.rightViewMatrix);
+	            rightCamera.setViewMatrix(rightCamera.viewMatrix);
+
+	        },
+
+	        getLeftCamera: function () {
+	            return this._leftCamera;
+	        },
+
+	        getRightCamera: function () {
+	            return this._rightCamera;
+	        }
 	    });
+
+	    module.exports = StereoCamera;
 
 
 /***/ },
@@ -34635,11 +34941,12 @@
 	        return this._pass.getTargetTexture();
 	    },
 
-	    render: function (forwardRenderer, deferredRenderer, camera, colorTexture) {
+	    render: function (renderer, deferredRenderer, camera, colorTexture) {
 	        var pass = this._pass;
 	        var gBuffer = deferredRenderer.getGBuffer();
 
-	        pass.resize(forwardRenderer.getWidth(), forwardRenderer.getHeight());
+	        var dpr = renderer.getDevicePixelRatio();
+	        pass.resize(renderer.viewport.width * dpr, renderer.viewport.height * dpr);
 
 	        pass.setUniform('colorTexture', colorTexture);
 	        pass.setUniform('projectionInv', camera.invProjectionMatrix._array);
@@ -34647,7 +34954,7 @@
 	        pass.setUniform('eyePosition', camera.getWorldPosition()._array);
 	        pass.setUniform('gBufferTexture2', gBuffer.getTargetTexture2());
 
-	        this._pass.render(forwardRenderer);
+	        this._pass.render(renderer);
 	    }
 	};
 
@@ -34741,13 +35048,14 @@
 	        return this._passV.getTargetTexture();
 	    },
 
-	    render: function (forwardRenderer, deferredRenderer, camera, colorTexture) {
+	    render: function (renderer, deferredRenderer, camera, colorTexture) {
 	        var passH = this._passH;
 	        var passV = this._passV;
 	        var gBuffer = deferredRenderer.getGBuffer();
 
-	        passH.resize(forwardRenderer.getWidth(), forwardRenderer.getHeight());
-	        // passV.resize(forwardRenderer.getWidth(), forwardRenderer.getHeight());
+	        var dpr = renderer.getDevicePixelRatio();
+	        passH.resize(renderer.viewport.width * dpr, renderer.viewport.height * dpr);
+	        passV.resize(renderer.viewport.width * dpr, renderer.viewport.height * dpr);
 
 	        passH.setUniform('texture', colorTexture);
 
@@ -34759,8 +35067,8 @@
 	        passH.setUniform('textureSize', [colorTexture.width, colorTexture.height]);
 	        passV.setUniform('textureSize', [colorTexture.width, colorTexture.height]);
 
-	        passH.render(forwardRenderer);
-	        passV.render(forwardRenderer);
+	        passH.render(renderer);
+	        passV.render(renderer);
 	    }
 	};
 
@@ -34779,7 +35087,7 @@
 	var qtek = __webpack_require__(1);
 	var Boid = __webpack_require__(163);
 
-	var fishIds = ['01', '02', '05', '07', '12', '15'];
+	var fishIds = ['01', '02', '05', '07', '12'];
 
 	function Fishes(cb) {
 	    this._rootNode = new qtek.Node();
@@ -34814,7 +35122,7 @@
 	                }
 	            });
 	        });
-	        for (var i = 0; i < 600; i++) {
+	        for (var i = 0; i < 100; i++) {
 	            var boid = new Boid();
 	            boid.velocity.x = Math.random() * 0.2 - 0.1;
 	            boid.velocity.y = Math.random() * 0.2 - 0.1;
@@ -34937,6 +35245,8 @@
 	            goal.set(wx, wy, wz);
 	            boid.setGoal(goal);
 	            boid.setGoalIntensity(10);
+
+
 
 	            usedFish++;
 	            if (usedFish >= boids.length) {

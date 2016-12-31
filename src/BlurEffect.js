@@ -28,13 +28,14 @@ CausticsEffect.prototype = {
         return this._passV.getTargetTexture();
     },
 
-    render: function (forwardRenderer, deferredRenderer, camera, colorTexture) {
+    render: function (renderer, deferredRenderer, camera, colorTexture) {
         var passH = this._passH;
         var passV = this._passV;
         var gBuffer = deferredRenderer.getGBuffer();
 
-        passH.resize(forwardRenderer.getWidth(), forwardRenderer.getHeight());
-        // passV.resize(forwardRenderer.getWidth(), forwardRenderer.getHeight());
+        var dpr = renderer.getDevicePixelRatio();
+        passH.resize(renderer.viewport.width * dpr, renderer.viewport.height * dpr);
+        passV.resize(renderer.viewport.width * dpr, renderer.viewport.height * dpr);
 
         passH.setUniform('texture', colorTexture);
 
@@ -46,8 +47,8 @@ CausticsEffect.prototype = {
         passH.setUniform('textureSize', [colorTexture.width, colorTexture.height]);
         passV.setUniform('textureSize', [colorTexture.width, colorTexture.height]);
 
-        passH.render(forwardRenderer);
-        passV.render(forwardRenderer);
+        passH.render(renderer);
+        passV.render(renderer);
     }
 };
 

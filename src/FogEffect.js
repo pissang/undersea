@@ -20,11 +20,12 @@ CausticsEffect.prototype = {
         return this._pass.getTargetTexture();
     },
 
-    render: function (forwardRenderer, deferredRenderer, camera, colorTexture) {
+    render: function (renderer, deferredRenderer, camera, colorTexture) {
         var pass = this._pass;
         var gBuffer = deferredRenderer.getGBuffer();
 
-        pass.resize(forwardRenderer.getWidth(), forwardRenderer.getHeight());
+        var dpr = renderer.getDevicePixelRatio();
+        pass.resize(renderer.viewport.width * dpr, renderer.viewport.height * dpr);
 
         pass.setUniform('colorTexture', colorTexture);
         pass.setUniform('projectionInv', camera.invProjectionMatrix._array);
@@ -32,7 +33,7 @@ CausticsEffect.prototype = {
         pass.setUniform('eyePosition', camera.getWorldPosition()._array);
         pass.setUniform('gBufferTexture2', gBuffer.getTargetTexture2());
 
-        this._pass.render(forwardRenderer);
+        this._pass.render(renderer);
     }
 };
 
