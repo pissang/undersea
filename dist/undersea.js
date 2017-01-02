@@ -54,6 +54,8 @@
 	var throttle = __webpack_require__(165);
 	var stereoCamera = new qtek.vr.StereoCamera();
 
+	qtek.Shader.import(__webpack_require__(168));
+
 	var root = document.getElementById('root');
 
 	var renderer = new qtek.Renderer({
@@ -102,6 +104,7 @@
 
 	var terrain = new Terrain();
 	var plane = terrain.getRootNode();
+	plane.scale.set(1000, 1000, 1);
 	plane.rotation.rotateX(-Math.PI / 2);
 	plane.castShadow = false;
 	scene.add(plane);
@@ -142,7 +145,8 @@
 	// Coral
 	var loader = new qtek.loader.GLTF({
 	    textureRootPath: 'asset/model/coral_texture',
-	    rootNode: new qtek.Node()
+	    rootNode: new qtek.Node(),
+	    useStandardMaterial: true
 	});
 	loader.success(function (result) {
 	    result.rootNode.rotation.rotateX(-Math.PI / 2);
@@ -165,6 +169,7 @@
 	});
 	loader.load('asset/model/coral.gltf');
 
+	var elapsedTime = 0;
 	function start(vrDisplay) {
 	    var causticsLight = causticsEffect.getLight();
 	    causticsLight.position.set(0, 10, 7);
@@ -190,16 +195,15 @@
 	    }
 
 	    animation.on('frame', function (frameTime) {
+
+	        elapsedTime += frameTime;
+
 	        function renderEye(eyeCamera, eye) {
 	            deferredRenderer.render(renderer, scene, eyeCamera, {
 	                renderToTarget: true,
 	                notUpdateScene: eye === 'right',
 	                notUpdateShadow: eye === 'right'
 	            });
-	            fogEffect.render(renderer, deferredRenderer, eyeCamera, deferredRenderer.getTargetTexture());
-	            // blurEffect.render(renderer, deferredRenderer, eyeCamera, fogEffect.getTargetTexture());
-
-	            tonemappingPass.render(renderer);
 	            if (eye === 'left') {
 	                tonemappingPass.getFrameBuffer().viewport = {
 	                    x: 0, y: 0,
@@ -214,6 +218,10 @@
 	                    devicePixelRatio: renderer.getDevicePixelRatio()
 	                };
 	            }
+	            tonemappingPass.render(renderer);
+	            fogEffect.render(renderer, deferredRenderer, eyeCamera, deferredRenderer.getTargetTexture());
+	            // blurEffect.render(renderer, deferredRenderer, eyeCamera, fogEffect.getTargetTexture());
+
 	            // lutPass.render(renderer);
 	            // deferredRenderer.shadowMapPass.renderDebug(renderer);
 	        }
@@ -265,8 +273,59 @@
 
 	window.stereo = location.search.match(/stereo/);
 
+	var waterShader = new qtek.Shader({
+	    vertex: qtek.Shader.source('waterplane.vertex'),
+	    fragment: qtek.Shader.source('waterplane.fragment')
+	});
+	waterShader.enableTexture(['environmentMap', 'normalMap']);
+	waterShader.define('fragment', 'SRGB_DECODE');
+	var waterPlane = new qtek.Mesh({
+	    geometry: new qtek.geometry.Plane(),
+	    material: new qtek.Material({
+	        shader: waterShader
+	    }),
+	    culling: false,
+	    castShadow: false
+	});
+	waterPlane.geometry.generateTangents();
+	waterPlane.position.y = 20;
+	waterPlane.scale.set(100, 100, 1);
+	waterPlane.rotation.rotateX(-Math.PI / 2);
+	waterPlane.update();
+
+	var cubemap = new qtek.TextureCube({
+	    width: 128,
+	    height: 128,
+	    // FIXME FLOAT seems wrong on iOS
+	    type : qtek.Texture.HALF_FLOAT
+	});
+	qtek.util.texture.loadPanorama(
+	    renderer,
+	    'asset/texture/Malibu_Overlook.hdr',
+	    cubemap,
+	    {
+	        exposure: 3
+	    }
+	);
+	var normalMap = new qtek.Texture2D({
+	    wrapS: qtek.Texture.REPEAT,
+	    wrapT: qtek.Texture.REPEAT,
+	    anisotropic: 32
+	});
+	normalMap.load('asset/texture/waternormals.jpg');
+	waterPlane.material.set('environmentMap', cubemap);
+	waterPlane.material.set('normalMap', normalMap);
+	waterPlane.material.set('uvRepeat', [10, 10]);
+
 	deferredRenderer.on('lightaccumulate', function (renderer, scene, eyeCamera) {
 	    causticsEffect.render(renderer, deferredRenderer, eyeCamera);
+	    // Render ocean plane
+	    var frameBuffer = deferredRenderer.getTargetFrameBuffer();
+	    frameBuffer.attach(deferredRenderer.getGBuffer().getTargetTexture2(), qtek.FrameBuffer.DEPTH_STENCIL_ATTACHMENT);
+	    renderer.gl.disable(renderer.gl.BLEND);
+	    waterPlane.material.set('time', elapsedTime / 1000);
+	    renderer.renderQueue([waterPlane], eyeCamera);
+	    frameBuffer.detach(qtek.FrameBuffer.DEPTH_STENCIL_ATTACHMENT);
 	});
 	deferredRenderer.on('beforelightaccumulate', function (renderer, scene, eyeCamera, updateShadow) {
 	    if (updateShadow) {
@@ -305,6 +364,7 @@
 	    fishes.goTo(out, 10);
 	}, 500);
 
+
 	var canvas = document.createElement('canvas');
 	canvas.width = 200;
 	canvas.height = 30;
@@ -337,7 +397,7 @@
 
 	    fogDensity: 0.14,
 	    fogColor0: [36,95,85],
-	    fogColor1: [36,95,85],
+	    fogColor1: [36,50,95],
 
 	    sceneColor: [144,190,200],
 	    ambientIntensity: 0.2,
@@ -15395,7 +15455,7 @@
 	                for (var attachment in this.outputs) {
 	                    var texture = this.outputs[attachment];
 	                    if (texture) {
-	                        frameBuffer.attach(renderer.gl, texture, attachment);
+	                        frameBuffer.attach(texture, attachment);
 	                    }
 	                }
 	            }
@@ -18143,6 +18203,7 @@
 	            var slot = 0;
 
 	            var sameShader = prevMaterial && prevMaterial.shader === this.shader;
+	            // FIXME Null texture may cause weird error in console
 	            // Set uniforms
 	            for (var u = 0; u < this._enabledUniforms.length; u++) {
 	                var symbol = this._enabledUniforms[u];
@@ -20054,34 +20115,21 @@
 	         */
 	        viewport: null,
 
-	        //Save attached texture and target
-	        _attachedTextures: null,
+	        _textures: null,
 
 	        _width: 0,
 	        _height: 0,
 
-	        _binded: false,
+	        _boundGL: null,
 	    }, function () {
 	        // Use cache
 	        this._cache = new Cache();
 
-	        this._attachedTextures = {};
+	        this._textures = {};
 	    },
 
 	    /**@lends qtek.FrameBuffer.prototype. */
 	    {
-
-	        /**
-	         * Resize framebuffer.
-	         * It is not recommanded use this methods to change the framebuffer size because the size will still be changed when attaching a new texture
-	         * @param  {number} width
-	         * @param  {number} height
-	         */
-	        resize: function (width, height) {
-	            this._width = width;
-	            this._height = height;
-	        },
-
 	        /**
 	         * Bind the framebuffer to given renderer before rendering
 	         * @param  {qtek.Renderer} renderer
@@ -20090,10 +20138,8 @@
 
 	            var _gl = renderer.gl;
 
-	            if (!this._binded) {
-	                _gl.bindFramebuffer(GL_FRAMEBUFFER, this._getFrameBufferGL(_gl));
-	                this._binded = true;
-	            }
+	            _gl.bindFramebuffer(GL_FRAMEBUFFER, this._getFrameBufferGL(_gl));
+	            this._boundGL = _gl;
 	            var cache = this._cache;
 
 	            cache.put('viewport', renderer.viewport);
@@ -20103,6 +20149,29 @@
 	            }
 	            else {
 	                renderer.setViewport(0, 0, this._width, this._height, 1);
+	            }
+
+	            var hasTextureAttached = false;
+	            for (var attachment in this._textures) {
+	                hasTextureAttached = true;
+	                var obj = this._textures[attachment];
+	                if (obj) {
+	                    // Attach textures
+	                    this._doAttach(_gl, obj.texture, attachment, obj.target);
+	                }
+	            }
+	            if (!hasTextureAttached && this.depthBuffer) {
+	                console.error('Must attach texture before bind, or renderbuffer may have incorrect width and height.')
+	            }
+
+	            var attachedTextures = cache.get('attached_textures');
+	            if (attachedTextures) {
+	                for (var attachment in attachedTextures) {
+	                    if (!this._textures[attachment]) {
+	                        var target = attachedTextures[attachment];
+	                        this._doDetach(_gl, attachment, target);
+	                    }
+	                }
 	            }
 	            if (!cache.get(KEY_DEPTHTEXTURE_ATTACHED) && this.depthBuffer) {
 	                // Create a new render buffer
@@ -20135,7 +20204,7 @@
 	            var _gl = renderer.gl;
 
 	            _gl.bindFramebuffer(GL_FRAMEBUFFER, null);
-	            this._binded = false;
+	            this._boundGL = null;
 
 	            this._cache.use(_gl.__GLID__);
 	            var viewport = this._cache.get('viewport');
@@ -20147,13 +20216,16 @@
 	            // Because the data of texture is changed over time,
 	            // Here update the mipmaps of texture each time after rendered;
 	            // PENDGING
-	            for (var attachment in this._attachedTextures) {
-	                var texture = this._attachedTextures[attachment];
-	                if (!texture.NPOT && texture.useMipmap) {
-	                    var target = texture instanceof TextureCube ? _gl.TEXTURE_CUBE_MAP : _gl.TEXTURE_2D;
-	                    _gl.bindTexture(target, texture.getWebGLTexture(_gl));
-	                    _gl.generateMipmap(target);
-	                    _gl.bindTexture(target, null);
+	            for (var attachment in this._textures) {
+	                var obj = this._textures[attachment];
+	                if (obj) {
+	                    var texture = obj.texture;
+	                    if (!texture.NPOT && texture.useMipmap) {
+	                        var target = texture instanceof TextureCube ? glenum.TEXTURE_CUBE_MAP : glenum.TEXTURE_2D;
+	                        _gl.bindTexture(target, texture.getWebGLTexture(_gl));
+	                        _gl.generateMipmap(target);
+	                        _gl.bindTexture(target, null);
+	                    }
 	                }
 	            }
 	        },
@@ -20171,69 +20243,146 @@
 
 	        /**
 	         * Attach a texture(RTT) to the framebuffer
-	         * @param  {WebGLRenderingContext} _gl
 	         * @param  {qtek.Texture} texture
 	         * @param  {number} [attachment=gl.COLOR_ATTACHMENT0]
 	         * @param  {number} [target=gl.TEXTURE_2D]
 	         */
-	        // FIXME First parameter should be renderer?
-	        attach: function (_gl, texture, attachment, target) {
+	        attach: function (texture, attachment, target) {
 
 	            if (!texture.width) {
 	                throw new Error('The texture attached to color buffer is not a valid.');
 	            }
-
-	            var bindOnce = false;
-	            if (!this._binded) {
-	                bindOnce = true;
-	                _gl.bindFramebuffer(GL_FRAMEBUFFER, this._getFrameBufferGL(_gl));
-	            }
-
-	            this._width = texture.width;
-	            this._height = texture.height;
+	            // TODO width and height check
 
 	            // If the depth_texture extension is enabled, developers
 	            // Can attach a depth texture to the depth buffer
 	            // http://blog.tojicode.com/2012/07/using-webgldepthtexture.html
 	            attachment = attachment || GL_COLOR_ATTACHMENT0;
-	            target = target || _gl.TEXTURE_2D;
+	            target = target || glenum.TEXTURE_2D;
 
+	            var _gl = this._boundGL;
+	            var attachedTextures;
+
+	            if (_gl) {
+	                var cache = this._cache;
+	                cache.use(_gl.__GLID__);
+	                attachedTextures = cache.get('attached_textures');
+	            }
+	            // Always update width and height
+	            this._width = texture.width;
+	            this._height = texture.height;
+
+	            // Check if texture attached
+	            var previous = this._textures[attachment];
+	            if (previous && previous.target === target
+	                && previous.texture === texture
+	                && (attachedTextures && attachedTextures[attachment] != null)
+	            ) {
+	                return;
+	            }
+
+	            var canAttach = true;
+	            if (_gl) {
+	                canAttach = this._doAttach(_gl, texture, attachment, target);
+	            }
+
+	            if (canAttach) {
+	                this._textures[attachment] = this._textures[attachment] || {};
+	                this._textures[attachment].texture = texture;
+	                this._textures[attachment].target = target;
+	            }
+	        },
+
+	        _doAttach: function (_gl, texture, attachment, target) {
+
+	            // Make sure texture is always updated
+	            // Because texture width or height may be changed and in this we can't be notified
+	            // FIXME awkward;
+	            var webglTexture = texture.getWebGLTexture(_gl);
+	            // Assume cache has been used.
+	            var attachedTextures = this._cache.get('attached_textures');
+	            if (attachedTextures && attachedTextures[attachment]) {
+	                var obj = attachedTextures[attachment];
+	                // Check if texture and target not changed
+	                if (obj.texture === texture && obj.target === target) {
+	                    return;
+	                }
+	            }
+	            attachment = +attachment;
+
+	            var canAttach = true;
 	            if (attachment === GL_DEPTH_ATTACHMENT || attachment === glenum.DEPTH_STENCIL_ATTACHMENT) {
 	                var extension = glinfo.getExtension(_gl, 'WEBGL_depth_texture');
 
 	                if (!extension) {
 	                    console.error('Depth texture is not supported by the browser');
-	                    return;
+	                    canAttach = false;
 	                }
 	                if (texture.format !== glenum.DEPTH_COMPONENT
 	                    && texture.format !== glenum.DEPTH_STENCIL
 	                ) {
 	                    console.error('The texture attached to depth buffer is not a valid.');
-	                    return;
+	                    canAttach = false;
 	                }
 
 	                // Dispose render buffer created previous
-	                var renderBuffer = this._cache.get(KEY_RENDERBUFFER);
-	                if (renderBuffer) {
-	                    _gl.deleteRenderbuffer(renderBuffer);
-	                    this._cache.put(KEY_RENDERBUFFER, false);
+	                if (canAttach) {
+	                    var renderbuffer = this._cache.get(KEY_RENDERBUFFER);
+	                    if (renderbuffer) {
+	                        _gl.framebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, null);
+	                        _gl.deleteRenderbuffer(renderbuffer);
+	                        this._cache.put(KEY_RENDERBUFFER, false);
+	                    }
+
+	                    this._cache.put(KEY_RENDERBUFFER_ATTACHED, false);
+	                    this._cache.put(KEY_DEPTHTEXTURE_ATTACHED, true);
 	                }
-
-	                this._cache.put(KEY_RENDERBUFFER_ATTACHED, false);
-	                this._cache.put(KEY_DEPTHTEXTURE_ATTACHED, true);
 	            }
-
-	            this._attachedTextures[attachment] = texture;
 
 	            // Mipmap level can only be 0
-	            _gl.framebufferTexture2D(GL_FRAMEBUFFER, attachment, target, texture.getWebGLTexture(_gl), 0);
+	            _gl.framebufferTexture2D(GL_FRAMEBUFFER, attachment, target, webglTexture, 0);
 
-	            if (bindOnce) {
-	                _gl.bindFramebuffer(GL_FRAMEBUFFER, null);
+	            if (!attachedTextures) {
+	                attachedTextures = {};
+	                this._cache.put('attached_textures', attachedTextures);
+	            }
+	            attachedTextures[attachment] = attachedTextures[attachment] || {};
+	            attachedTextures[attachment].texture = texture;
+	            attachedTextures[attachment].target = target;
+
+	            return canAttach;
+	        },
+
+	        _doDetach: function (_gl, attachment, target) {
+	            // Detach a texture from framebuffer
+	            // https://github.com/KhronosGroup/WebGL/blob/master/conformance-suites/1.0.0/conformance/framebuffer-test.html#L145
+	            _gl.framebufferTexture2D(GL_FRAMEBUFFER, attachment, target, null, 0);
+
+	            // Assume cache has been used.
+	            var attachedTextures = this._cache.get('attached_textures');
+	            if (attachedTextures && attachedTextures[attachment]) {
+	                attachedTextures[attachment] = null;
+	            }
+
+	            if (attachment === GL_DEPTH_ATTACHMENT || attachment === glenum.DEPTH_STENCIL_ATTACHMENT) {
+	                this._cache.put(KEY_DEPTHTEXTURE_ATTACHED, false);
 	            }
 	        },
-	        // TODO
-	        detach: function () {},
+
+	        /**
+	         * Detach a texture
+	         * @param  {number} [attachment=gl.COLOR_ATTACHMENT0]
+	         * @param  {number} [target=gl.TEXTURE_2D]
+	         */
+	        detach: function (attachment, target) {
+	            // TODO depth extension check ?
+	            this._textures[attachment] = null;
+	            if (this._boundGL) {
+	                var cache = this._cache;
+	                cache.use(this._boundGL.__GLID__);
+	                this._doDetach(this._boundGL, attachment, target);
+	            }
+	        },
 	        /**
 	         * Dispose
 	         * @param  {WebGLRenderingContext} _gl
@@ -20255,7 +20404,7 @@
 	            cache.deleteContext(_gl.__GLID__);
 
 	            // Clear cache for reusing
-	            this._attachedTextures = {};
+	            this._textures = {};
 	            this._width = this._height = 0;
 
 	        }
@@ -20905,7 +21054,7 @@
 	                    if (typeof(attachment) == 'string') {
 	                        attachment = _gl[attachment];
 	                    }
-	                    frameBuffer.attach(renderer.gl, texture, attachment);
+	                    frameBuffer.attach(texture, attachment);
 	                }
 	                frameBuffer.bind(renderer);
 
@@ -21621,8 +21770,8 @@
 	            var gl = renderer.gl;
 
 	            var frameBuffer = this._frameBuffer;
-	            frameBuffer.attach(renderer.gl, this._gBufferTex1);
-	            frameBuffer.attach(renderer.gl, this._gBufferTex2, renderer.gl.DEPTH_STENCIL_ATTACHMENT);
+	            frameBuffer.attach(this._gBufferTex1);
+	            frameBuffer.attach(this._gBufferTex2, renderer.gl.DEPTH_STENCIL_ATTACHMENT);
 	            frameBuffer.bind(renderer);
 	            gl.clearColor(0, 0, 0, 0);
 	            gl.depthMask(true);
@@ -21649,7 +21798,7 @@
 	            renderer.renderQueue(opaqueQueue, camera);
 
 	            // Pass 2
-	            frameBuffer.attach(renderer.gl, this._gBufferTex3);
+	            frameBuffer.attach(this._gBufferTex3);
 	            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 	            this._replaceGBufferMat(opaqueQueue, 2);
 	            renderer.beforeRenderObject = getBeforeRenderHook2(
@@ -21658,7 +21807,6 @@
 	                this._defaultMetalnessMap
 	            );
 	            renderer.renderQueue(opaqueQueue, camera);
-
 
 	            renderer.beforeRenderObject = oldBeforeRender;
 
@@ -23045,7 +23193,9 @@
 
 	            _gBuffer: new GBuffer(),
 
-	            _lightAccumFrameBuffer: new FrameBuffer(),
+	            _lightAccumFrameBuffer: new FrameBuffer({
+	                depthBuffer: false
+	            }),
 
 	            _lightAccumTex: new Texture2D({
 	                // FIXME Device not support float texture
@@ -23110,8 +23260,6 @@
 
 	            camera.update(true);
 
-	            this._gBuffer.update(renderer, scene, camera);
-
 	            // PENDING For stereo rendering
 	            var dpr = renderer.getDevicePixelRatio();
 	            if (this.autoResize
@@ -23121,19 +23269,31 @@
 	                this.resize(renderer.getWidth() * dpr, renderer.getHeight() * dpr);
 	            }
 
+	            this._gBuffer.update(renderer, scene, camera);
+
 	            // Accumulate light buffer
 	            this._accumulateLightBuffer(renderer, scene, camera, !opts.notUpdateShadow);
 
 	            if (!opts.renderToTarget) {
-	                // this._outputPass.setUniform('texture', this._lightAccumTex);
+	                this._outputPass.setUniform('texture', this._lightAccumTex);
 
 	                this._outputPass.render(renderer);
 	                // this._gBuffer.renderDebug(renderer, camera, 'normal');
 	            }
 	        },
 
+	        /**
+	         * @return {qtek.Texture2D}
+	         */
 	        getTargetTexture: function () {
 	            return this._lightAccumTex;
+	        },
+
+	        /**
+	         * @return {qtek.FrameBuffer}
+	         */
+	        getTargetFrameBuffer: function () {
+	            return this._lightAccumFrameBuffer;
 	        },
 
 	        getGBuffer: function () {
@@ -23172,7 +23332,7 @@
 
 	            this.trigger('beforelightaccumulate', renderer, scene, camera, updateShadow);
 
-	            lightAccumFrameBuffer.attach(gl, lightAccumTex);
+	            lightAccumFrameBuffer.attach(lightAccumTex);
 	            lightAccumFrameBuffer.bind(renderer);
 	            var color = renderer.color;
 	            gl.clearColor(color[0], color[1], color[2], color[3]);
@@ -23302,6 +23462,9 @@
 	            this.trigger('lightaccumulate', renderer, scene, camera);
 
 	            lightAccumFrameBuffer.unbind(renderer);
+
+	            this.trigger('afterlightaccumulate', renderer, scene, camera);
+
 	        },
 
 	        _prepareLightShadow: (function () {
@@ -24550,7 +24713,7 @@
 
 	            for (var j = 0; j < targets.length; j++) {
 	                var pixels = new ArrayCtor(renderTargetTmp.width * renderTargetTmp.height * 4);
-	                frameBuffer.attach(renderer.gl, renderTargetTmp);
+	                frameBuffer.attach(renderTargetTmp);
 	                frameBuffer.bind(renderer);
 
 	                var camera = envMapPass.getCamera(targets[j]);
@@ -25192,14 +25355,7 @@
 	        cameras.nz.lookAt(Vector3.NEGATIVE_Z, Vector3.NEGATIVE_Y);
 
 	        // FIXME In windows, use one framebuffer only renders one side of cubemap
-	        ret._frameBuffers = {
-	            px: new FrameBuffer(),
-	            nx: new FrameBuffer(),
-	            py: new FrameBuffer(),
-	            ny: new FrameBuffer(),
-	            pz: new FrameBuffer(),
-	            nz: new FrameBuffer()
-	        };
+	        ret._frameBuffer = new FrameBuffer()
 
 	        return ret;
 	    }, {
@@ -25246,23 +25402,20 @@
 
 	                    this.shadowMapPass.render(renderer, scene, camera, true);
 	                }
-	                this._frameBuffers[target].attach(
-	                    _gl, this.texture, _gl.COLOR_ATTACHMENT0,
+	                this._frameBuffer.attach(
+	                    this.texture, _gl.COLOR_ATTACHMENT0,
 	                    _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i
 	                );
-	                this._frameBuffers[target].bind(renderer);
+	                this._frameBuffer.bind(renderer);
 	                renderer.render(scene, camera, true);
-	                this._frameBuffers[target].unbind(renderer);
+	                this._frameBuffer.unbind(renderer);
 	            }
 	        },
 	        /**
 	         * @param  {qtek.Renderer} renderer
 	         */
 	        dispose: function(gl) {
-	            for (var i = 0; i < 6; i++) {
-	                var target = targets[i];
-	                this._frameBuffers[target].dispose(gl);
-	            }
+	            this._frameBuffer.dispose(gl);
 	        }
 	    });
 
@@ -25384,7 +25537,7 @@
 
 	            textureUtil.loadTexture(path, option, function (texture) {
 	                // PENDING
-	                texture.flipY = false;
+	                texture.flipY = option.flipY || false;
 	                self.panoramaToCubeMap(renderer, texture, cubeMap, option);
 	                texture.dispose(renderer.gl);
 	                onsuccess && onsuccess(cubeMap);
@@ -26931,6 +27084,11 @@
 	        shaderName: 'qtek.standard',
 
 	        /**
+	         * @type {string}
+	         */
+	        useStandardMaterial: false,
+
+	        /**
 	         * @type {boolean}
 	         */
 	        includeCamera: true,
@@ -27323,7 +27481,8 @@
 	                    enabledTextures.push('normalMap');
 	                }
 	                var material;
-	                if (this.shaderName === 'qtek.standard') {
+	                var isStandardMaterial = this.useStandardMaterial;
+	                if (isStandardMaterial) {
 	                    material = new StandardMaterial({
 	                        name: materialInfo.name
 	                    });
@@ -27346,16 +27505,33 @@
 	                    // TODO blend Func and blend Equation
 	                }
 
-	                if (uniforms['diffuse']) {
+	                var diffuseProp = uniforms['diffuse'];
+	                if (diffuseProp) {
 	                    // Color
-	                    if (uniforms['diffuse'] instanceof Array) {
-	                        material.set('color', uniforms['diffuse'].slice(0, 3));
-	                    } else { // Texture
-	                        material.set('diffuseMap', uniforms['diffuse']);
+	                    if (diffuseProp instanceof Array) {
+	                        if (isStandardMaterial) {
+	                            material.color = diffuseProp.slice(0, 3);
+	                        }
+	                        else {
+	                            material.set('color', diffuseProp.slice(0, 3));
+	                        }
+	                    }
+	                    else { // Texture
+	                        if (isStandardMaterial) {
+	                            material.diffuseMap = diffuseProp;
+	                        }
+	                        else {
+	                            material.set('diffuseMap', diffuseProp);
+	                        }
 	                    }
 	                }
 	                if (uniforms['normalMap'] != null) {
-	                    material.set('normalMap', uniforms['normalMap']);
+	                    if (isStandardMaterial) {
+	                        material.normalMap = uniforms['normalMap'];
+	                    }
+	                    else {
+	                        material.set('normalMap', uniforms['normalMap']);
+	                    }
 	                }
 	                if (uniforms['emission'] != null) {
 	                    material.set('emission', uniforms['emission'].slice(0, 3));
@@ -31842,7 +32018,7 @@
 	                this.resize(renderer.width, renderer.height);
 	            }
 
-	            this._frameBuffer.attach(renderer.gl, this._texture);
+	            this._frameBuffer.attach(this._texture);
 	            this._frameBuffer.bind(renderer);
 	            this._idOffset = this.lookupOffset;
 	            this._setMaterial(scene);
@@ -33444,7 +33620,7 @@
 	                var viewport = renderer.viewport;
 
 	                var _gl = renderer.gl;
-	                this._frameBuffer.attach(_gl, texture);
+	                this._frameBuffer.attach(texture);
 	                this._frameBuffer.bind(renderer);
 	                _gl.clear(_gl.COLOR_BUFFER_BIT | _gl.DEPTH_BUFFER_BIT);
 
@@ -33503,7 +33679,7 @@
 	            var camera = this._getSpotLightCamera(light);
 	            var _gl = renderer.gl;
 
-	            this._frameBuffer.attach(_gl, texture);
+	            this._frameBuffer.attach(texture);
 	            this._frameBuffer.bind(renderer);
 
 	            _gl.clear(_gl.COLOR_BUFFER_BIT | _gl.DEPTH_BUFFER_BIT);
@@ -33532,19 +33708,18 @@
 	            pointLightShadowMaps.push(texture);
 
 	            this._bindDistanceMaterial(casters, light);
+	            this._frameBuffer.bind(renderer);
 	            for (var i = 0; i < 6; i++) {
 	                var target = targets[i];
 	                var camera = this._getPointLightCamera(light, target);
 
-	                this._frameBuffer.attach(renderer.gl, texture, _gl.COLOR_ATTACHMENT0, _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i);
-	                this._frameBuffer.bind(renderer);
+	                this._frameBuffer.attach(texture, _gl.COLOR_ATTACHMENT0, _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i);
 
 	                _gl.clear(_gl.COLOR_BUFFER_BIT | _gl.DEPTH_BUFFER_BIT);
 
 	                renderer.renderQueue(casters, camera);
-
-	                this._frameBuffer.unbind(renderer);
 	            }
+	            this._frameBuffer.unbind(renderer);
 	        },
 
 	        _gaussianFilter: function (renderer, texture, size) {
@@ -33556,13 +33731,13 @@
 	            var _gl = renderer.gl;
 	            var tmpTexture = this._texturePool.get(parameter);
 
-	            this._frameBuffer.attach(_gl, tmpTexture);
+	            this._frameBuffer.attach(tmpTexture);
 	            this._frameBuffer.bind(renderer);
 	            this._gaussianPassH.setUniform('texture', texture);
 	            this._gaussianPassH.setUniform('textureWidth', size);
 	            this._gaussianPassH.render(renderer);
 
-	            this._frameBuffer.attach(_gl, texture);
+	            this._frameBuffer.attach(texture);
 	            this._gaussianPassV.setUniform('texture', tmpTexture);
 	            this._gaussianPassV.setUniform('textureHeight', size);
 	            this._gaussianPassV.render(renderer);
@@ -34675,7 +34850,7 @@
 	        pass.setUniform('environmentMap', envMap);
 
 	        var framebuffer = new FrameBuffer();
-	        framebuffer.attach(renderer.gl, shTexture);
+	        framebuffer.attach(shTexture);
 	        pass.render(renderer, framebuffer);
 
 	        framebuffer.bind(renderer);
@@ -35004,6 +35179,10 @@
 	        return this._pass.getTargetTexture();
 	    },
 
+	    setViewport: function (viewport) {
+	        this._pass.viewport = viewport;
+	    },
+
 	    render: function (renderer, deferredRenderer, camera, colorTexture) {
 	        var pass = this._pass;
 	        var gBuffer = deferredRenderer.getGBuffer();
@@ -35053,7 +35232,7 @@
 
 	PostProcessPass.prototype.render = function (renderer) {
 	    if (this._frameBuffer) {
-	        this._frameBuffer.attach(renderer.gl, this._targetTexture);
+	        this._frameBuffer.attach(this._targetTexture);
 	    }
 	    this._pass.render(renderer, this._frameBuffer);
 	};
@@ -35163,7 +35342,8 @@
 
 	    var loaders = fishIds.map(function (fishId) {
 	        var loader = new qtek.loader.GLTF({
-	            rootNode: new qtek.Node()
+	            rootNode: new qtek.Node(),
+	            useStandardMaterial: true
 	        });
 	        loader.load('asset/model/TropicalFish' + fishId + '.gltf');
 	        return loader;
@@ -35687,7 +35867,6 @@
 	    });
 	    // Don't foget to generate tangents
 	    // plane.geometry.generateTangents();
-	    plane.scale.set(1000, 1000, 1);
 
 	    this._plane = plane;
 
@@ -36199,6 +36378,14 @@
 	module.exports = throttle;
 
 	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
+
+/***/ },
+/* 166 */,
+/* 167 */,
+/* 168 */
+/***/ function(module, exports) {
+
+	module.exports = "@export waterplane.vertex\n\nuniform mat4 worldViewProjection : WORLDVIEWPROJECTION;\nuniform mat4 worldInverseTranspose : WORLDINVERSETRANSPOSE;\nuniform mat4 world : WORLD;\n\nuniform vec2 uvRepeat : [1.0, 1.0];\nuniform vec2 uvOffset : [0.0, 0.0];\n\nattribute vec3 position : POSITION;\nattribute vec2 texcoord : TEXCOORD_0;\nattribute vec3 normal : NORMAL;\n\nvarying vec2 v_Texcoord;\nvarying vec3 v_Normal;\nvarying vec3 v_WorldPosition;\n\n\nvoid main()\n{\n\n    gl_Position = worldViewProjection * vec4(position, 1.0);\n\n    v_Texcoord = texcoord * uvRepeat + uvOffset;\n    v_WorldPosition = (world * vec4(position, 1.0)).xyz;\n\n    v_Normal = normalize((worldInverseTranspose * vec4(normal, 0.0)).xyz);\n\n}\n\n@end\n\n@export waterplane.fragment\n\nuniform mat4 viewInverse : VIEWINVERSE;\n\nvarying vec2 v_Texcoord;\nvarying vec3 v_Normal;\nvarying vec3 v_WorldPosition;\n\n#ifdef NORMALMAP_ENABLED\nuniform sampler2D normalMap;\n#endif\n\n#ifdef ENVIRONMENTMAP_ENABLED\nuniform samplerCube environmentMap;\n#endif\n\nuniform vec3 color : [1.0, 1.0, 1.0];\nuniform float alpha : 1.0;\n\nuniform float reflectivity : 0.5;\nuniform float time;\n\nvec4 getNoise( vec2 uv )\n{\n\tvec2 uv0 = ( uv / 103.0 ) + vec2(time / 17.0, time / 29.0);\n\tvec2 uv1 = uv / 107.0-vec2( time / -19.0, time / 31.0 );\n\tvec2 uv2 = uv / vec2( 8907.0, 9803.0 ) + vec2( time / 101.0, time / 97.0 );\n\tvec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - vec2( time / 109.0, time / -113.0 );\n\tvec4 noise = texture2D( normalMap, uv0 ) +\n\t\ttexture2D( normalMap, uv1 ) +\n\t\ttexture2D( normalMap, uv2 ) +\n\t\ttexture2D( normalMap, uv3 );\n\treturn noise * 0.5 - 1.0;\n}\n\nvoid main()\n{\n    vec4 finalColor = vec4(color, alpha);\n\n    vec3 eyePos = viewInverse[3].xyz;\n    vec3 viewDirection = normalize(eyePos - v_WorldPosition);\n\n    vec3 normal = v_Normal;\n#ifdef NORMALMAP_ENABLED\n    normal = normalize(getNoise(v_WorldPosition.xz * 6.0).xyz * vec3( 1.5, 1.0, 1.5 ) );\n#endif\n\n#ifdef ENVIRONMENTMAP_ENABLED\n    vec3 envTexel = textureCube(environmentMap, reflect(-viewDirection, normal)).xyz;\n    finalColor.rgb = finalColor.rgb + envTexel * reflectivity;\n#endif\n\n    gl_FragColor = finalColor;\n}\n\n@end"
 
 /***/ }
 /******/ ]);

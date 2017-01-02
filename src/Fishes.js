@@ -11,7 +11,8 @@ function Fishes(cb) {
 
     var loaders = fishIds.map(function (fishId) {
         var loader = new qtek.loader.GLTF({
-            rootNode: new qtek.Node()
+            rootNode: new qtek.Node(),
+            useStandardMaterial: true
         });
         loader.load('asset/model/TropicalFish' + fishId + '.gltf');
         return loader;

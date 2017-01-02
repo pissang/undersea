@@ -20,6 +20,10 @@ CausticsEffect.prototype = {
         return this._pass.getTargetTexture();
     },
 
+    setViewport: function (viewport) {
+        this._pass.viewport = viewport;
+    },
+
     render: function (renderer, deferredRenderer, camera, colorTexture) {
         var pass = this._pass;
         var gBuffer = deferredRenderer.getGBuffer();

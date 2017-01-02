@@ -8,6 +8,8 @@ var Terrain = require('./Terrain');
 var throttle = require('lodash.throttle');
 var stereoCamera = new qtek.vr.StereoCamera();
 
+qtek.Shader.import(require('raw!./waterplane.glsl'));
+
 var root = document.getElementById('root');
 
 var renderer = new qtek.Renderer({
@@ -56,6 +58,7 @@ var camera = new qtek.camera.Perspective({
 
 var terrain = new Terrain();
 var plane = terrain.getRootNode();
+plane.scale.set(1000, 1000, 1);
 plane.rotation.rotateX(-Math.PI / 2);
 plane.castShadow = false;
 scene.add(plane);
@@ -96,7 +99,8 @@ var lookAtTarget = new qtek.math.Vector3(0, 25, 0);
 // Coral
 var loader = new qtek.loader.GLTF({
     textureRootPath: 'asset/model/coral_texture',
-    rootNode: new qtek.Node()
+    rootNode: new qtek.Node(),
+    useStandardMaterial: true
 });
 loader.success(function (result) {
     result.rootNode.rotation.rotateX(-Math.PI / 2);
@@ -119,6 +123,7 @@ loader.success(function (result) {
 });
 loader.load('asset/model/coral.gltf');
 
+var elapsedTime = 0;
 function start(vrDisplay) {
     var causticsLight = causticsEffect.getLight();
     causticsLight.position.set(0, 10, 7);
@@ -144,16 +149,15 @@ function start(vrDisplay) {
     }
 
     animation.on('frame', function (frameTime) {
+
+        elapsedTime += frameTime;
+
         function renderEye(eyeCamera, eye) {
             deferredRenderer.render(renderer, scene, eyeCamera, {
                 renderToTarget: true,
                 notUpdateScene: eye === 'right',
                 notUpdateShadow: eye === 'right'
             });
-            fogEffect.render(renderer, deferredRenderer, eyeCamera, deferredRenderer.getTargetTexture());
-            // blurEffect.render(renderer, deferredRenderer, eyeCamera, fogEffect.getTargetTexture());
-
-            tonemappingPass.render(renderer);
             if (eye === 'left') {
                 tonemappingPass.getFrameBuffer().viewport = {
                     x: 0, y: 0,
@@ -168,6 +172,10 @@ function start(vrDisplay) {
                     devicePixelRatio: renderer.getDevicePixelRatio()
                 };
             }
+            tonemappingPass.render(renderer);
+            fogEffect.render(renderer, deferredRenderer, eyeCamera, deferredRenderer.getTargetTexture());
+            // blurEffect.render(renderer, deferredRenderer, eyeCamera, fogEffect.getTargetTexture());
+
             // lutPass.render(renderer);
             // deferredRenderer.shadowMapPass.renderDebug(renderer);
         }
@@ -219,8 +227,59 @@ function start(vrDisplay) {
 
 window.stereo = location.search.match(/stereo/);
 
+var waterShader = new qtek.Shader({
+    vertex: qtek.Shader.source('waterplane.vertex'),
+    fragment: qtek.Shader.source('waterplane.fragment')
+});
+waterShader.enableTexture(['environmentMap', 'normalMap']);
+waterShader.define('fragment', 'SRGB_DECODE');
+var waterPlane = new qtek.Mesh({
+    geometry: new qtek.geometry.Plane(),
+    material: new qtek.Material({
+        shader: waterShader
+    }),
+    culling: false,
+    castShadow: false
+});
+waterPlane.geometry.generateTangents();
+waterPlane.position.y = 20;
+waterPlane.scale.set(100, 100, 1);
+waterPlane.rotation.rotateX(-Math.PI / 2);
+waterPlane.update();
+
+var cubemap = new qtek.TextureCube({
+    width: 128,
+    height: 128,
+    // FIXME FLOAT seems wrong on iOS
+    type : qtek.Texture.HALF_FLOAT
+});
+qtek.util.texture.loadPanorama(
+    renderer,
+    'asset/texture/Malibu_Overlook.hdr',
+    cubemap,
+    {
+        exposure: 3
+    }
+);
+var normalMap = new qtek.Texture2D({
+    wrapS: qtek.Texture.REPEAT,
+    wrapT: qtek.Texture.REPEAT,
+    anisotropic: 32
+});
+normalMap.load('asset/texture/waternormals.jpg');
+waterPlane.material.set('environmentMap', cubemap);
+waterPlane.material.set('normalMap', normalMap);
+waterPlane.material.set('uvRepeat', [10, 10]);
+
 deferredRenderer.on('lightaccumulate', function (renderer, scene, eyeCamera) {
     causticsEffect.render(renderer, deferredRenderer, eyeCamera);
+    // Render ocean plane
+    var frameBuffer = deferredRenderer.getTargetFrameBuffer();
+    frameBuffer.attach(deferredRenderer.getGBuffer().getTargetTexture2(), qtek.FrameBuffer.DEPTH_STENCIL_ATTACHMENT);
+    renderer.gl.disable(renderer.gl.BLEND);
+    waterPlane.material.set('time', elapsedTime / 1000);
+    renderer.renderQueue([waterPlane], eyeCamera);
+    frameBuffer.detach(qtek.FrameBuffer.DEPTH_STENCIL_ATTACHMENT);
 });
 deferredRenderer.on('beforelightaccumulate', function (renderer, scene, eyeCamera, updateShadow) {
     if (updateShadow) {
@@ -259,6 +318,7 @@ var setGoalAround = throttle(function (e) {
     fishes.goTo(out, 10);
 }, 500);
 
+
 var canvas = document.createElement('canvas');
 canvas.width = 200;
 canvas.height = 30;
@@ -291,7 +351,7 @@ var config = {
 
     fogDensity: 0.14,
     fogColor0: [36,95,85],
-    fogColor1: [36,95,85],
+    fogColor1: [36,50,95],
 
     sceneColor: [144,190,200],
     ambientIntensity: 0.2,

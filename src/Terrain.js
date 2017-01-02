@@ -33,7 +33,6 @@ function Terrain() {
     });
     // Don't foget to generate tangents
     // plane.geometry.generateTangents();
-    plane.scale.set(1000, 1000, 1);
 
     this._plane = plane;
 
