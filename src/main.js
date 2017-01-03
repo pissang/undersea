@@ -71,30 +71,12 @@ var fishes = new Fishes(function () {
     fishes.randomPositionInBox(box);
 
     fishes.setWorldSize(box);
-    // setTimeout(function () {
-    //     fishes.goTo(new qtek.math.Vector3(0, 50, 0), 30);
-    // }, 1000);
 });
 scene.add(fishes.getRootNode());
 
 camera.position.set(0, 3, 0);
-// camera.position.set(0, 3, 8);
 
 var lookAtTarget = new qtek.math.Vector3(0, 25, 0);
-// var up = new qtek.math.Vector3(0, 1, 0);
-// var animator = animation.animate(camera.position)
-//     .when(10000, {
-//         y: 15,
-//         z: 80
-//     })
-//     .during(function () {
-//         camera.lookAt(lookAtTarget, up);
-//     })
-//     .done(function () {
-//         window.addEventListener('mousemove', setGoalAround);
-//         fishes.setAvoidWalls(true);
-//     })
-//     .start('quadraticOut');
 
 // Coral
 var loader = new qtek.loader.GLTF({
@@ -123,6 +105,71 @@ loader.success(function (result) {
 });
 loader.load('asset/model/coral.gltf');
 
+// Whale
+var loader = new qtek.loader.GLTF({
+    rootNode: new qtek.Node(),
+    useStandardMaterial: true
+});
+loader.success(function (result) {
+    result.rootNode.scale.set(10, 10, 10);
+    result.rootNode.position.set(0, 20 , -120);
+    result.rootNode.childAt(0).rotation.rotateY(-Math.PI / 4);
+    scene.add(result.rootNode);
+
+    var meshNeedsSplit = null;
+    result.rootNode.traverse(function (mesh) {
+        if (mesh.material) {
+            mesh.material.linear = true;
+        }
+        if (mesh.joints && mesh.joints.length) {
+            meshNeedsSplit = mesh;
+        }
+    });
+    qtek.util.mesh.splitByJoints(meshNeedsSplit, 20, true);
+
+    var oldPosition = new qtek.math.Vector3(-300, 20, -200);
+    var dir = new qtek.math.Vector3();
+    animation.animate(result.rootNode.position, { loop: true })
+        .when(0, {
+            x: -400, y: 20, z: -200
+        })
+        .when(13000, {
+            x: 400, y: 30, z: -200
+        })
+        .when(15000, {
+            x: 400, y: 30, z: -10
+        })
+        .when(22000, {
+            x: 0, y: 60, z: -10
+        })
+        .when(29000, {
+            x: -400, y: 30, z: -10
+        })
+        .when(31000, {
+            x: -400, y: 20, z: -200
+        })
+        .during(function () {
+            qtek.math.Vector3.sub(dir, result.rootNode.position, oldPosition);
+            if (dir.len()) {
+                qtek.math.Vector3.normalize(dir, dir);
+                result.rootNode.update();
+                result.rootNode.worldTransform.z = dir;
+                result.rootNode.decomposeWorldTransform();
+            }
+            oldPosition.copy(result.rootNode.position);
+        })
+        .start('spline');
+
+    var skeleton = result.skeletons['skin_0'];
+    animation.addClip(skeleton.getClip(0));
+    skeleton.getClip(0).setLoop(true);
+
+    animation.on('frame', function () {
+        skeleton.setPose(0);
+    });
+});
+loader.load('asset/model/whale/whale-anim.gltf');
+
 var elapsedTime = 0;
 function start(vrDisplay) {
     var causticsLight = causticsEffect.getLight();
@@ -131,6 +178,7 @@ function start(vrDisplay) {
 
     causticsLight.intensity = 1.8;
     causticsLight.shadowResolution = 1024;
+    causticsLight.shadowBias = 0.005;
     causticsLight.shadowCascade = 2;
     causticsLight.cascadeSplitLogFactor = 0.5;
 

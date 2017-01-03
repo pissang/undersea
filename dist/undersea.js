@@ -117,30 +117,12 @@
 	    fishes.randomPositionInBox(box);
 
 	    fishes.setWorldSize(box);
-	    // setTimeout(function () {
-	    //     fishes.goTo(new qtek.math.Vector3(0, 50, 0), 30);
-	    // }, 1000);
 	});
 	scene.add(fishes.getRootNode());
 
 	camera.position.set(0, 3, 0);
-	// camera.position.set(0, 3, 8);
 
 	var lookAtTarget = new qtek.math.Vector3(0, 25, 0);
-	// var up = new qtek.math.Vector3(0, 1, 0);
-	// var animator = animation.animate(camera.position)
-	//     .when(10000, {
-	//         y: 15,
-	//         z: 80
-	//     })
-	//     .during(function () {
-	//         camera.lookAt(lookAtTarget, up);
-	//     })
-	//     .done(function () {
-	//         window.addEventListener('mousemove', setGoalAround);
-	//         fishes.setAvoidWalls(true);
-	//     })
-	//     .start('quadraticOut');
 
 	// Coral
 	var loader = new qtek.loader.GLTF({
@@ -169,6 +151,71 @@
 	});
 	loader.load('asset/model/coral.gltf');
 
+	// Whale
+	var loader = new qtek.loader.GLTF({
+	    rootNode: new qtek.Node(),
+	    useStandardMaterial: true
+	});
+	loader.success(function (result) {
+	    result.rootNode.scale.set(10, 10, 10);
+	    result.rootNode.position.set(0, 20 , -120);
+	    result.rootNode.childAt(0).rotation.rotateY(-Math.PI / 4);
+	    scene.add(result.rootNode);
+
+	    var meshNeedsSplit = null;
+	    result.rootNode.traverse(function (mesh) {
+	        if (mesh.material) {
+	            mesh.material.linear = true;
+	        }
+	        if (mesh.joints && mesh.joints.length) {
+	            meshNeedsSplit = mesh;
+	        }
+	    });
+	    qtek.util.mesh.splitByJoints(meshNeedsSplit, 20, true);
+
+	    var oldPosition = new qtek.math.Vector3(-300, 20, -200);
+	    var dir = new qtek.math.Vector3();
+	    animation.animate(result.rootNode.position, { loop: true })
+	        .when(0, {
+	            x: -400, y: 20, z: -200
+	        })
+	        .when(13000, {
+	            x: 400, y: 30, z: -200
+	        })
+	        .when(15000, {
+	            x: 400, y: 30, z: -10
+	        })
+	        .when(22000, {
+	            x: 0, y: 60, z: -10
+	        })
+	        .when(29000, {
+	            x: -400, y: 30, z: -10
+	        })
+	        .when(31000, {
+	            x: -400, y: 20, z: -200
+	        })
+	        .during(function () {
+	            qtek.math.Vector3.sub(dir, result.rootNode.position, oldPosition);
+	            if (dir.len()) {
+	                qtek.math.Vector3.normalize(dir, dir);
+	                result.rootNode.update();
+	                result.rootNode.worldTransform.z = dir;
+	                result.rootNode.decomposeWorldTransform();
+	            }
+	            oldPosition.copy(result.rootNode.position);
+	        })
+	        .start('spline');
+
+	    var skeleton = result.skeletons['skin_0'];
+	    animation.addClip(skeleton.getClip(0));
+	    skeleton.getClip(0).setLoop(true);
+
+	    animation.on('frame', function () {
+	        skeleton.setPose(0);
+	    });
+	});
+	loader.load('asset/model/whale/whale-anim.gltf');
+
 	var elapsedTime = 0;
 	function start(vrDisplay) {
 	    var causticsLight = causticsEffect.getLight();
@@ -177,6 +224,7 @@
 
 	    causticsLight.intensity = 1.8;
 	    causticsLight.shadowResolution = 1024;
+	    causticsLight.shadowBias = 0.005;
 	    causticsLight.shadowCascade = 2;
 	    causticsLight.cascadeSplitLogFactor = 0.5;
 
@@ -18422,7 +18470,7 @@
 	         * @return {qtek.Material}
 	         */
 	        clone: function () {
-	            var material = new Material({
+	            var material = new this.constructor({
 	                name: this.name,
 	                shader: this.shader
 	            });
@@ -21588,7 +21636,7 @@
 
 	            roughnessMap = roughnessMap || defaultRoughnessMap;
 
-	            if (!prevMaterial) {
+	            if (prevMaterial !== gBufferMat) {
 	                gBufferMat.set('glossiness', 1.0 - roughness);
 	                gBufferMat.set('normalMap', normalMap);
 	                gBufferMat.set('roughnessMap', roughnessMap);
@@ -21651,7 +21699,7 @@
 	            diffuseMap = diffuseMap || defaultDiffuseMap;
 	            metalnessMap = metalnessMap || defaultMetalnessMap;
 
-	            if (!prevMaterial) {
+	            if (prevMaterial !== gBufferMat) {
 	                gBufferMat.set('color', color);
 	                gBufferMat.set('metalness', metalness);
 	                gBufferMat.set('diffuseMap', diffuseMap);
@@ -21842,13 +21890,14 @@
 	            var viewProjectionInv = new Matrix4();
 	            Matrix4.multiply(viewProjectionInv, camera.worldTransform, camera.invProjectionMatrix);
 
-	            this._debugPass.setUniform('viewportSize', [renderer.getWidth(), renderer.getHeight()]);
-	            this._debugPass.setUniform('gBufferTexture1', this._gBufferTex1);
-	            this._debugPass.setUniform('gBufferTexture2', this._gBufferTex2);
-	            this._debugPass.setUniform('gBufferTexture3', this._gBufferTex3);
-	            this._debugPass.setUniform('debug', debugTypes[type]);
-	            this._debugPass.setUniform('viewProjectionInv', viewProjectionInv._array);
-	            this._debugPass.render(renderer);
+	            var debugPass = this._debugPass;
+	            debugPass.setUniform('viewportSize', [renderer.getWidth(), renderer.getHeight()]);
+	            debugPass.setUniform('gBufferTexture1', this._gBufferTex1);
+	            debugPass.setUniform('gBufferTexture2', this._gBufferTex2);
+	            debugPass.setUniform('gBufferTexture3', this._gBufferTex3);
+	            debugPass.setUniform('debug', debugTypes[type]);
+	            debugPass.setUniform('viewProjectionInv', viewProjectionInv._array);
+	            debugPass.render(renderer);
 
 	            renderer.restoreViewport();
 	            renderer.restoreClear();
@@ -21887,6 +21936,8 @@
 	                if (nJoints > 0) {
 	                    mat1.shader.define('vertex', 'SKINNING');
 	                    mat1.shader.define('vertex', 'JOINT_COUNT', nJoints);
+	                    mat2.shader.define('vertex', 'SKINNING');
+	                    mat2.shader.define('vertex', 'JOINT_COUNT', nJoints);
 	                }
 
 	                obj = {
@@ -27346,9 +27397,14 @@
 	                        node.skeleton = skeleton;
 	                        node.joints = jointIndices;
 	                        var material = node.material;
-	                        material.shader = material.shader.clone();
-	                        material.shader.define('vertex', 'SKINNING');
-	                        material.shader.define('vertex', 'JOINT_COUNT', jointIndices.length);
+	                        if (material instanceof StandardMaterial) {
+	                            material.jointCount = jointIndices.length;
+	                        }
+	                        else {
+	                            material.shader = material.shader.clone();
+	                            material.shader.define('vertex', 'SKINNING');
+	                            material.shader.define('vertex', 'JOINT_COUNT', jointIndices.length);
+	                        }
 	                    }
 	                    else {
 	                        // Mesh have multiple primitives
@@ -27358,9 +27414,14 @@
 	                                child.skeleton = skeleton;
 	                                child.joints = jointIndices;
 	                                var material = child.material;
-	                                material.shader = material.shader.clone();
-	                                material.shader.define('vertex', 'SKINNING');
-	                                material.shader.define('vertex', 'JOINT_COUNT', jointIndices.length);
+	                                if (material instanceof StandardMaterial) {
+	                                    material.jointCount = jointIndices.length;
+	                                }
+	                                else {
+	                                    material.shader = material.shader.clone();
+	                                    material.shader.define('vertex', 'SKINNING');
+	                                    material.shader.define('vertex', 'JOINT_COUNT', jointIndices.length);
+	                                }
 	                            }
 	                        }
 	                    }
@@ -27943,7 +28004,7 @@
 
 	    var TEXTURE_PROPERTIES = ['diffuseMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissionMap', 'environmentMap', 'brdfLookup'];
 	    var SIMPLE_PROPERTIES = ['color', 'emission', 'emissionIntensity', 'alpha', 'roughness', 'metalness', 'uvRepeat', 'uvOffset'];
-
+	    var PROPERTIES_CHANGE_SHADER = ['jointCount', 'linear', 'encodeRGBM'];
 
 	    var OTHER_SHADER_KEYS = [
 	        'environmentMapPrefiltered',
@@ -28134,6 +28195,7 @@
 	             * @name jointCount
 	             * @default 0
 	             */
+	            // FIXME Redundant with mesh
 	            jointCount: 0,
 
 	            /**
@@ -28211,6 +28273,22 @@
 	                releaseShader(this._shader);
 	            }
 	            Material.prototype.dispose.call(gl, disposeTexture);
+	        },
+
+
+	        clone: function () {
+	            var material = new StandardMaterial({
+	                name: this.name
+	            });
+	            TEXTURE_PROPERTIES.forEach(function (propName) {
+	                if (this[propName]) {
+	                    material[propName] = this[propName];
+	                }
+	            }, this);
+	            SIMPLE_PROPERTIES.concat(PROPERTIES_CHANGE_SHADER).forEach(function (propName) {
+	                material[propName] = this[propName];
+	            }, this);
+	            return material;
 	        }
 	    });
 
@@ -28250,7 +28328,7 @@
 	        });
 	    });
 
-	    ['jointCount', 'linear', 'encodeRGBM'].forEach(function (propName) {
+	    PROPERTIES_CHANGE_SHADER.forEach(function (propName) {
 	        var privateKey = '_' + propName;
 	        Object.defineProperty(StandardMaterial.prototype, propName, {
 	            get: function () {
@@ -34375,6 +34453,7 @@
 	    var Mesh = __webpack_require__(49);
 	    var Node = __webpack_require__(23);
 	    var Material = __webpack_require__(47);
+	    var StandardMaterial = __webpack_require__(106);
 	    var Shader = __webpack_require__(45);
 	    var BoundingBox = __webpack_require__(27);
 	    var glMatrix = __webpack_require__(15);
@@ -34577,7 +34656,7 @@
 	            var getJointByIndex = function(idx) {
 	                return joints[idx];
 	            };
-	            while(rest > 0) {
+	            while (rest > 0) {
 	                var bucketFaces = [];
 	                var bucketJointReverseMap = [];
 	                var bucketJoints = [];
@@ -34608,7 +34687,8 @@
 	                                        bucketJointReverseMap[jointIdx] = subJointNumber;
 	                                        bucketJoints[subJointNumber++] = jointIdx;
 	                                        addedJointIdxPerFace[addedNumber++] = jointIdx;
-	                                    } else {
+	                                    }
+	                                    else {
 	                                        canAddToBucket = false;
 	                                    }
 	                                }
@@ -34622,10 +34702,12 @@
 	                            bucketJoints.pop();
 	                            subJointNumber--;
 	                        }
-	                    } else {
+	                    }
+	                    else {
 	                        if (isStatic) {
 	                            bucketFaces.push(faces.subarray(f * 3, (f + 1) * 3));
-	                        } else {
+	                        }
+	                        else {
 	                            bucketFaces.push(faces[f]);
 	                        }
 	                        isFaceAdded[f] = true;
@@ -34655,32 +34737,30 @@
 	                var bucket = buckets[b];
 	                var jointReverseMap = bucket.jointReverseMap;
 	                var subJointNumber = bucket.joints.length;
-	                var subShader = shaders[subJointNumber];
-	                if (!subShader) {
-	                    subShader = shader.clone();
-	                    subShader.define('vertex', 'JOINT_COUNT', subJointNumber);
-	                    shaders[subJointNumber] = subShader;
+
+	                var subMat = material.clone();
+	                if (material instanceof StandardMaterial) {
+	                    subMat.jointCount = subJointNumber;
 	                }
-	                var subMat = new Material({
-	                    name : [material.name, b].join('-'),
-	                    shader : subShader,
-	                    transparent : material.transparent,
-	                    depthTest : material.depthTest,
-	                    depthMask : material.depthMask,
-	                    blend : material.blend
-	                });
-	                for (var name in material.uniforms) {
-	                    var uniform = material.uniforms[name];
-	                    subMat.set(name, uniform.value);
+	                else {
+	                    var subShader = shaders[subJointNumber];
+	                    if (!subShader) {
+	                        subShader = shader.clone();
+	                        subShader.define('vertex', 'JOINT_COUNT', subJointNumber);
+	                        shaders[subJointNumber] = subShader;
+	                    }
+	                    material.attachShader(subShader, true);
 	                }
+	                material.name = [material.name, b].join('-');
+
 	                var subGeo = isStatic ? new StaticGeometry() : new DynamicGeometry();
 
 	                var subMesh = new Mesh({
-	                    name : [mesh.name, i].join('-'),
-	                    material : subMat,
-	                    geometry : subGeo,
-	                    skeleton : skeleton,
-	                    joints : bucket.joints.slice()
+	                    name: [mesh.name, i].join('-'),
+	                    material: subMat,
+	                    geometry: subGeo,
+	                    skeleton: skeleton,
+	                    joints: bucket.joints.slice()
 	                });
 	                var nVertex = 0;
 	                var nVertex2 = geometry.vertexCount;
