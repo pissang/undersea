@@ -157,10 +157,11 @@
 	    useStandardMaterial: true
 	});
 	loader.success(function (result) {
+	    var moveNode = new qtek.Node();
 	    result.rootNode.scale.set(10, 10, 10);
-	    result.rootNode.position.set(0, 20 , -120);
-	    result.rootNode.childAt(0).rotation.rotateY(-Math.PI / 4);
-	    scene.add(result.rootNode);
+	    result.rootNode.rotation.rotateY(-Math.PI / 4);
+	    moveNode.add(result.rootNode);
+	    scene.add(moveNode);
 
 	    var meshNeedsSplit = null;
 	    result.rootNode.traverse(function (mesh) {
@@ -175,7 +176,7 @@
 
 	    var oldPosition = new qtek.math.Vector3(-300, 20, -200);
 	    var dir = new qtek.math.Vector3();
-	    animation.animate(result.rootNode.position, { loop: true })
+	    animation.animate(moveNode.position, { loop: true })
 	        .when(0, {
 	            x: -400, y: 20, z: -200
 	        })
@@ -186,7 +187,7 @@
 	            x: 400, y: 30, z: -10
 	        })
 	        .when(22000, {
-	            x: 0, y: 60, z: -10
+	            x: 0, y: 40, z: 0
 	        })
 	        .when(29000, {
 	            x: -400, y: 30, z: -10
@@ -195,14 +196,16 @@
 	            x: -400, y: 20, z: -200
 	        })
 	        .during(function () {
-	            qtek.math.Vector3.sub(dir, result.rootNode.position, oldPosition);
+	            qtek.math.Vector3.sub(dir, moveNode.position, oldPosition);
 	            if (dir.len()) {
 	                qtek.math.Vector3.normalize(dir, dir);
-	                result.rootNode.update();
-	                result.rootNode.worldTransform.z = dir;
-	                result.rootNode.decomposeWorldTransform();
+	                moveNode.update();
+	                moveNode.worldTransform.z = dir;
+	                moveNode.decomposeWorldTransform();
+	                // TODO
+	                moveNode.scale.set(1, 1, 1);
 	            }
-	            oldPosition.copy(result.rootNode.position);
+	            oldPosition.copy(moveNode.position);
 	        })
 	        .start('spline');
 
