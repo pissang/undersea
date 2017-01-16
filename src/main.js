@@ -6,6 +6,7 @@ var PostProcessPass = require('./PostProcessPass');
 var Fishes = require('./Fishes');
 var Terrain = require('./Terrain');
 var throttle = require('lodash.throttle');
+var AlchemyAOPass = require('./AlchemyAOPass');
 var stereoCamera = new qtek.vr.StereoCamera();
 
 qtek.Shader.import(require('raw!./waterplane.glsl'));
@@ -13,8 +14,8 @@ qtek.Shader.import(require('raw!./waterplane.glsl'));
 var root = document.getElementById('root');
 
 var renderer = new qtek.Renderer({
-    devicePixelRatio: 2,
-    preserveDrawingBuffer: true
+    // devicePixelRatio: 1,
+    // preserveDrawingBuffer: true
 });
 
 root.appendChild(renderer.canvas);
@@ -23,11 +24,15 @@ var deferredRenderer = new qtek.deferred.Renderer({
     shadowMapPass: new qtek.prePass.ShadowMap(),
     autoResize: false
 });
+// var alchemyAoPass = new AlchemyAOPass({
+//     gBuffer: deferredRenderer.getGBuffer()
+// });
+
 var causticsEffect = new CausticsEffect();
 var fogEffect = new FogEffect();
 var blurEffect = new BlurEffect();
 
-var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.tonemapping'), true);
+var tonemappingPass = new PostProcessPass(qtek.Shader.source('qtek.compositor.hdr.composite'), true);
 tonemappingPass.getShader().disableTexturesAll();
 tonemappingPass.getShader().enableTexture('texture');
 tonemappingPass.setUniform('texture', fogEffect.getTargetTexture());
@@ -180,18 +185,17 @@ function start(vrDisplay) {
     causticsLight.lookAt(scene.position);
 
     causticsLight.intensity = 1.8;
-    causticsLight.shadowResolution = 1024;
+    causticsLight.shadowResolution = 2048;
     causticsLight.shadowBias = 0.005;
-    causticsLight.shadowCascade = 2;
+    causticsLight.shadowCascade = 1;
     causticsLight.cascadeSplitLogFactor = 0.5;
-
 
     // causticsLight.castShadow = !vrDisplay;
 
     var control;
     if (!vrDisplay) {
 
-        control = new qtek.plugin.OrbitControl({
+        control = new qtek.plugin.FirstPersonControl({
             target: camera,
             domElement: renderer.canvas,
             sensitivity: 0.2,
@@ -209,6 +213,7 @@ function start(vrDisplay) {
                 notUpdateScene: eye === 'right',
                 notUpdateShadow: eye === 'right'
             });
+            // alchemyAoPass.render(renderer, eyeCamera);
             if (eye === 'left') {
                 tonemappingPass.getFrameBuffer().viewport = {
                     x: 0, y: 0,
@@ -324,6 +329,9 @@ waterPlane.material.set('uvRepeat', [10, 10]);
 
 deferredRenderer.on('lightaccumulate', function (renderer, scene, eyeCamera) {
     causticsEffect.render(renderer, deferredRenderer, eyeCamera);
+
+    // alchemyAoPass.output(renderer);
+
     // Render ocean plane
     var frameBuffer = deferredRenderer.getTargetFrameBuffer();
     frameBuffer.attach(deferredRenderer.getGBuffer().getTargetTexture2(), qtek.FrameBuffer.DEPTH_STENCIL_ATTACHMENT);
