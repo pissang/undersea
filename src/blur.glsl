@@ -45,8 +45,6 @@ uniform mat4 projectionInv;
 uniform float blurNear: 120.0;
 uniform float blurFar: 200.0;
 
-@import qtek.compositor.util.sample
-
 @import undersea.blur_common
 
 void main (void)
@@ -74,8 +72,6 @@ uniform mat4 projectionInv;
 // TODO
 uniform float blurNear: 120.0;
 uniform float blurFar: 200.0;
-
-@import qtek.compositor.util.sample
 
 @import undersea.blur_common
 
