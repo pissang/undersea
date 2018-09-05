@@ -1,18 +1,13 @@
 {
-  "name": "underwater",
+  "name": "undersea",
   "version": "1.0.0",
   "description": "",
-  "main": "webpack.config.js",
   "dependencies": {
-    "qtek": "^0.2.1"
-  },
-  "devDependencies": {
-    "lodash.throttle": "^4.1.1",
     "raw-loader": "^0.5.1"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "webpack",
+    "dev": "webpack --mode development --watch"
   },
-  "author": "",
-  "license": "ISC"
+  "license": "MIT"
 }

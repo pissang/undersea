@@ -1,193 +1,133 @@
-var qtek = require('qtek');
-var Boid = require('./Boid');
+import {Node as clayNode, Vector3, Texture2D} from 'claygl';
+import loadModel from './loadModel';
+import Boid from './Boid';
 
-var fishIds = ['01', '02', '05', '07', '12'];
+const fishIds = ['01', '02', '05', '07', '12'];
 
-function Fishes(cb) {
-    this._rootNode = new qtek.Node();
-    this._boids = [];
+export default class Fishes {
+    constructor(shader, cb) {
+        this._rootNode = new clayNode();
+        this._boids = [];
 
-    var self = this;
-
-    var loaders = fishIds.map(function (fishId) {
-        var loader = new qtek.loader.GLTF({
-            rootNode: new qtek.Node(),
-            useStandardMaterial: true
-        });
-        loader.load('asset/model/TropicalFish' + fishId + '.gltf');
-        return loader;
-    });
-    var groupTask = new qtek.async.TaskGroup();
-    groupTask.all(loaders).success(function (results) {
-        results.forEach(function (result, idx) {
-            // var normalMap = new qtek.Texture2D({
-            //     anisotropic: 32
-            // });
-            // normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
-            result.rootNode.traverse(function (node) {
-                if (node.material) {
-                    node.geometry.generateTangents();
-                    node.material.linear = true;
-                    node.material.roughness = 0.8;
-                    // FIXME wrong on iphone se
-                    // node.material.normalMap = normalMap;
-                    node.material.diffuseMap.anisotropic = 32;
-                }
-                if (fishIds[idx] === '15') {
-                    node.rotation.rotateY(Math.PI / 2);
-                }
+        Promise.all(fishIds.map(function (fishId) {
+            return loadModel('asset/model/TropicalFish' + fishId + '.gltf', {
+                shader: shader,
+                rootNode: new clayNode()
             });
-        });
-        for (var i = 0; i < 200; i++) {
-            var boid = new Boid();
-            boid.velocity.x = Math.random() * 0.2 - 0.1;
-            boid.velocity.y = Math.random() * 0.2 - 0.1;
-            boid.velocity.z = Math.random() * 2 - 1;
-            boid.setAvoidWalls(false);
-            boid.setMaxSteerForce(0.1);
-            boid.setMaxSpeed(1);
+        })).then(results => {
+            results.forEach(function (result, idx) {
+                const normalMap = new Texture2D({
+                    anisotropic: 32
+                });
+                normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
+                result.rootNode.traverse(function (mesh) {
+                    if (mesh.material) {
+                        mesh.geometry.generateTangents();
+                        mesh.material.set({
+                            roughness: 0.8
+                        });
+                        mesh.material.get('diffuseMap').anisotropic = 8;
+                        mesh.material.normalMap = normalMap;
+                    }
+                    if (fishIds[idx] === '15') {
+                        mesh.rotation.rotateY(Math.PI / 2);
+                    }
+                });
+            });
+            for (let i = 0; i < 500; i++) {
+                const boid = new Boid();
+                boid.velocity.x = Math.random() * 0.2 - 0.1;
+                boid.velocity.y = Math.random() * 0.2 - 0.1;
+                boid.velocity.z = Math.random() * 2 - 1;
+                boid.setAvoidWalls(false);
+                boid.setMaxSteerForce(0.1);
+                boid.setMaxSpeed(1);
 
-            var randomFish = results[Math.round(Math.random() * (results.length - 1))];
-            var fishClone = randomFish.rootNode.clone();
+                const randomFish = results[Math.round(Math.random() * (results.length - 1))];
+                const fishClone = randomFish.rootNode.clone();
 
-            fishClone.scale.set(0.01, 0.01, 0.01);
+                fishClone.scale.set(0.01, 0.01, 0.01);
 
-            self._rootNode.add(fishClone);
-            self._boids.push(boid);
-        }
-        cb && cb();
-    });
-
-}
-
-Fishes.prototype.randomPositionInBox = function (box) {
-    this._boids.forEach(function (boid) {
-        boid.position.x = Math.random() * (box.max.x - box.min.x) + box.min.x;
-        boid.position.y = Math.random() * (box.max.y - box.min.y) + box.min.y - this._rootNode.position.y;
-        boid.position.z = Math.random() * (box.max.z - box.min.z) + box.min.z;
-    }, this);
-};
-
-Fishes.prototype.setWorldSize = function (box) {
-
-    var width = box.max.x - box.min.x;
-    var height = box.max.y - box.min.y;
-    var depth = box.max.z - box.min.z;
-
-    if (width && height && depth) {
-        this._boids.forEach(function (boid) {
-            boid.setWorldSize(width, height, depth);
-            boid.setAvoidWalls(true);
-        });
-    }
-    else {
-        this._boids.forEach(function (boid) {
-            boid.setAvoidWalls(false);
-        });
-    }
-
-    // PENDING
-    this._rootNode.position.y = height + box.min.y;
-    // this._rootNode.position.z = box.min.z;
-};
-
-Fishes.prototype.update = function (dTime) {
-    var boids = this._boids;
-    for (var i = 0; i < boids.length; i++) {
-		boid = boids[ i ];
-        boid.run(boids);
-
-        var fish = this._rootNode.childAt(i);
-        fish.rotation.identity();
-        fish.rotation.rotateY(Math.atan2( - boid.velocity.z, boid.velocity.x ));
-        fish.rotation.rotateZ(Math.asin( boid.velocity.y / boid.velocity.length()));
-        fish.position.copy(boid.position);
-    }
-}
-
-Fishes.prototype.getRootNode = function () {
-    return this._rootNode;
-};
-
-Fishes.prototype.goTo = function (position, radius) {
-    var boids = this._boids;
-    for (var i = 0; i < boids.length; i++) {
-		boid = boids[i];
-        var goal = boid.__goal || (boid.__goal = new qtek.math.Vector3());
-        goal.copy(position);
-        var theta = (Math.random() - 0.5) * Math.PI;
-        var phi = Math.random() * Math.PI * 2;
-
-        var y = Math.sin(theta);
-        var x = Math.cos(theta) * Math.sin(phi);
-        var z = Math.cos(theta) * Math.cos(phi);
-
-        var r = Math.sqrt(Math.random(), 2) * radius;
-        goal.x += x * r;
-        goal.y += y * r - this._rootNode.position.y;
-        goal.z += z * r;
-
-        boid.setGoal(boid.__goal);
-        boid.setGoalIntensity(0.02);
-    }
-};
-
-var canvas = document.createElement('canvas');
-var ctx = canvas.getContext('2d');
-
-canvas.style.position = 'absolute';
-canvas.style.bottom = 0;
-canvas.style.left = 0;
-document.body.appendChild(canvas);
-Fishes.prototype.setFormation = function (img, box) {
-
-    canvas.width = img.width;
-    canvas.height = img.height;
-
-
-    ctx.drawImage(img, 0, 0, img.width, img.height);
-    var imgData = ctx.getImageData(0, 0, img.width, img.height);
-
-    var usedFish = 0;
-    var boids = this._boids;
-
-    var boxWidth = box.max.x - box.min.x;
-    var boxHeight = box.max.y - box.min.y;
-    var boxDepth = box.max.z - box.min.z;
-
-
-    for (var i = 0; i < imgData.data.length;) {
-        var x = (i / 4) % img.width;
-        var y = Math.floor((i / 4) / img.width);
-
-        var r = imgData.data[i++];
-        var g = imgData.data[i++];
-        var b = imgData.data[i++];
-        var a = imgData.data[i++];
-
-        if (a > 0.7 * 255) {
-            var wx = (x / img.width) * boxWidth + box.min.x;
-            var wy = (1 - y / img.height) * boxHeight + box.min.y - this._rootNode.position.y;
-            var wz = Math.random() * boxDepth + box.min.z;
-
-            var boid = boids[usedFish];
-            var goal = boid.__goal || (boid.__goal = new qtek.math.Vector3());
-            goal.set(wx, wy, wz);
-            boid.setGoal(goal);
-            boid.setGoalIntensity(10);
-
-
-
-            usedFish++;
-            if (usedFish >= boids.length) {
-                break;
+                this._rootNode.add(fishClone);
+                this._boids.push(boid);
             }
+            cb && cb();
+        });
+    }
+
+    getRootNode() {
+        return this._rootNode;
+    }
+
+    randomPositionInBox(box) {
+        this._boids.forEach(boid => {
+            boid.position.x = Math.random() * (box.max.x - box.min.x) + box.min.x;
+            boid.position.y = Math.random() * (box.max.y - box.min.y) + box.min.y - this._rootNode.position.y;
+            boid.position.z = Math.random() * (box.max.z - box.min.z) + box.min.z;
+        }, this);
+    }
+
+    setWorldSize(box) {
+        const width = box.max.x - box.min.x;
+        const height = box.max.y - box.min.y;
+        const depth = box.max.z - box.min.z;
+
+        if (width && height && depth) {
+            this._boids.forEach(boid => {
+                boid.setWorldSize(width, height, depth);
+                boid.setAvoidWalls(true);
+            });
+        }
+        else {
+            this._boids.forEach(boid => {
+                boid.setAvoidWalls(false);
+            });
+        }
+
+        // PENDING
+        this._rootNode.position.y = height + box.min.y;
+    }
+
+    update(dTime) {
+        const boids = this._boids;
+        const z = new Vector3(0, 0, 1);
+        const dir = new Vector3();
+        for (let i = 0; i < boids.length; i++) {
+            const boid = boids[i];
+            boid.run(boids);
+
+            const fish = this._rootNode.childAt(i);
+            Vector3.normalize(dir, boid.velocity);
+            if (dir.len() > 0.01) {
+                fish.rotation.rotationTo(z, dir);
+            }
+            // fish.rotation.identity();
+            // fish.rotation.rotateY(Math.atan2(-boid.velocity.z, boid.velocity.x));
+            // fish.rotation.rotateX(Math.asin(boid.velocity.y / boid.velocity.len()));
+            fish.position.copy(boid.position);
         }
     }
 
-    for (var i = usedFish; i < boids.length; i++) {
-        boids[i].setGoal(null);
-    }
-};
+    goTo(position, radius) {
+        const boids = this._boids;
+        for (const i = 0; i < boids.length; i++) {
+            const boid = boids[i];
+            const goal = boid.__goal || (boid.__goal = new Vector3());
+            goal.copy(position);
+            const theta = (Math.random() - 0.5) * Math.PI;
+            const phi = Math.random() * Math.PI * 2;
 
-module.exports = Fishes;
+            const y = Math.sin(theta);
+            const x = Math.cos(theta) * Math.sin(phi);
+            const z = Math.cos(theta) * Math.cos(phi);
+
+            const r = Math.sqrt(Math.random(), 2) * radius;
+            goal.x += x * r;
+            goal.y += y * r - this._rootNode.position.y;
+            goal.z += z * r;
+
+            boid.setGoal(boid.__goal);
+            boid.setGoalIntensity(0.02);
+        }
+    }
+}

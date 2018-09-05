@@ -1,100 +1,92 @@
-var qtek = require('qtek');
+import {Texture2D, geometry, Mesh, Material} from 'claygl';
 
-function Terrain() {
-    // Seabed
-    var sandTexture = new qtek.Texture2D({
-        anisotropic: 32,
-        wrapS: qtek.Texture.REPEAT,
-        wrapT: qtek.Texture.REPEAT
-    });
-    var sandNormalTexture = new qtek.Texture2D({
-        anisotropic: 32,
-        wrapS: qtek.Texture.REPEAT,
-        wrapT: qtek.Texture.REPEAT
-    });
-    sandTexture.load('asset/texture/sand.jpg');
-    sandNormalTexture.load('asset/texture/sand_NRM.png');
-    var plane = new qtek.Mesh({
-        geometry: new qtek.geometry.Plane({
-            widthSegments: 100,
-            heightSegments: 100,
-            // Must mark as dynamic
-            dynamic: true
-        }),
-        culling: false,
-        material: new qtek.StandardMaterial({
+export default class Terrain {
+    constructor(shader) {
+        // Seabed
+        var sandTexture = new Texture2D({
+            anisotropic: 8
+        });
+        var sandNormalTexture = new Texture2D({
+            anisotropic: 8
+        });
+        sandTexture.load('asset/texture/sand.jpg');
+        sandNormalTexture.load('asset/texture/sand_NRM.png');
+        var plane = new Mesh({
+            geometry: new geometry.Plane({
+                widthSegments: 100,
+                heightSegments: 100,
+                // Must mark as dynamic
+                dynamic: true
+            }),
+            culling: false,
+            material: new Material({
+                shader: shader
+            })
+        });
+        plane.material.set({
             diffuseMap: sandTexture,
-            // normalMap: sandNormalTexture,
+            normalMap: sandNormalTexture,
             uvRepeat: [20, 20],
-            linear: true,
-            // TODO Seems not working
             roughness: 1
-        })
-    });
-    // Don't foget to generate tangents
-    // plane.geometry.generateTangents();
+        });
 
-    this._plane = plane;
+        // Don't foget to generate tangents
+        plane.geometry.generateTangents();
 
-    var self = this;
-    var img = new Image();
-    img.onload = function () {
-        var canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        var ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, img.width, img.height);
-        var imgData = ctx.getImageData(0, 0, img.width, img.height);
+        this._plane = plane;
 
-        // document.body.appendChild(canvas);
-        // canvas.style.position = 'absolute';
-        // canvas.style.left = 0;
-        // canvas.style.bottom = 0;
+        const self = this;
+        const img = new Image();
+        img.onload = function () {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, img.width, img.height);
+            const imgData = ctx.getImageData(0, 0, img.width, img.height);
 
-        self._heightData = imgData.data;
-        self._img = img;
+            self._heightData = imgData.data;
+            self._img = img;
 
-        self.updateHeightmap();
-    };
-    img.src = 'asset/texture/terrain.png';
-}
-
-Terrain.prototype.updateHeightmap = function (opt) {
-    var heightData = this._heightData;
-    if (!heightData) {
-        return;
+            self.updateHeightmap();
+        };
+        img.src = 'asset/texture/terrain.png';
     }
-    opt = opt || {};
-    opt.maxHeight = opt.maxHeight == null ? 10 : opt.maxHeight;
 
-    var geometry = this._plane.geometry;
-    var positions = geometry.attributes.position;
+    updateHeightmap(opts = {}) {
+        const maxHeight = opts.maxHeight == null ? 10 : opts.maxHeight;
+        const heightData = this._heightData;
+        if (!heightData) {
+            return;
+        }
 
-    var pos = [];
-    var width = this._img.width;
-    var height = this._img.height;
-    for (var i = 0; i < geometry.vertexCount; i++) {
-        positions.get(i, pos);
-        // From -1 to 1
-        var x = (pos[0] + 1) / 2;
-        var y = (pos[1] + 1) / 2;
-        // To width and height
-        x = Math.round(x * (width - 1));
-        y = Math.round(y * (height - 1));
+        const geometry = this._plane.geometry;
+        const positions = geometry.attributes.position;
 
-        var idx = (y * width + x) * 4;
-        var r = heightData[idx];
-        pos[2] = ((r / 255 - 0.5) * 4 + 0.5) * opt.maxHeight;
+        const pos = [];
+        const width = this._img.width;
+        const height = this._img.height;
+        for (let i = 0; i < geometry.vertexCount; i++) {
+            positions.get(i, pos);
+            // From -1 to 1
+            let x = (pos[0] + 1) / 2;
+            let y = (pos[1] + 1) / 2;
+            // To width and height
+            x = Math.round(x * (width - 1));
+            y = Math.round(y * (height - 1));
 
-        positions.set(i, pos);
+            const idx = (y * width + x) * 4;
+            const r = heightData[idx];
+            pos[2] = ((r / 255 - 0.5) * 4 + 0.5) * maxHeight;
+
+            positions.set(i, pos);
+        }
+        geometry.generateVertexNormals();
+        // geometry.generateTangents();
+        geometry.dirty();
     }
-    geometry.generateVertexNormals();
-    // geometry.generateTangents();
-    geometry.dirty();
-};
 
-Terrain.prototype.getRootNode = function () {
-    return this._plane;
+    getRootNode() {
+        return this._plane;
+    }
 }
-
-module.exports = Terrain;

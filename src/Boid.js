@@ -1,7 +1,6 @@
 // Based on http://www.openprocessing.org/visuals/?visualID=6910
 
-var qtek = require('qtek');
-var Vector3 = qtek.math.Vector3;
+import {Vector3} from 'claygl';
 
 var Boid = function () {
 
@@ -194,7 +193,7 @@ var Boid = function () {
 
             boid = boids[ i ];
 
-            distance = Vector3.distance(boid.position, this.position );
+            var distance = Vector3.distance(boid.position, this.position );
 
             if ( distance > 0 && distance <= _neighborhoodRadius ) {
 
@@ -293,8 +292,8 @@ var Boid = function () {
 
         return posSum;
 
-    }
+    };
 
-}
+};
 
-module.exports = Boid;
+export default Boid;
