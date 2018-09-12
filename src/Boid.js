@@ -8,7 +8,7 @@ var Boid = function () {
     _acceleration, _width = 500, _height = 500, _depth = 200, _goal, _neighborhoodRadius = 100,
     _maxSpeed = 4, _maxSteerForce = 0.1, _avoidWalls = false,
 
-    _goalIntensity = 0.005;
+    _goalIntensity = 0.001;
 
     this.position = new Vector3();
     this.velocity = new Vector3();

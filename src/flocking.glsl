@@ -31,13 +31,12 @@ void main()	{
 uniform sampler2D texturePosition;
 uniform sampler2D textureVelocity;
 
-uniform float time;
-uniform float testing;
-uniform float delta; // about 0.016
-uniform float seperationDistance; // 20
-uniform float alignmentDistance; // 40
-uniform float cohesionDistance; //
-uniform float freedomFactor;
+uniform float time = 0.0;
+uniform float delta = 0.016; // about 0.016
+uniform float seperationDistance = 20; // 20
+uniform float alignmentDistance = 20; // 40
+uniform float cohesionDistance = 20;
+uniform float freedomFactor = 0.75;
 uniform vec3 predator;
 
 uniform vec2 resolution : VIEWPORT_SIZE;
@@ -104,16 +103,10 @@ void main() {
 
     // move birds away from predator
     if (dist < preyRadius) {
-
         f = ( distSquared / preyRadiusSq - 1.0 ) * delta * 100.;
         velocity += normalize( dir ) * f;
         limit += 5.0;
     }
-
-
-    // if (testing == 0.0) {}
-    // if ( rand( uv + time ) < freedomFactor ) {}
-
 
     // Attract flocks to the center
     vec3 central = vec3( 0., 0., 0. );

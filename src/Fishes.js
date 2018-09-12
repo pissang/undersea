@@ -24,7 +24,7 @@ export default class Fishes {
                     if (mesh.material) {
                         mesh.geometry.generateTangents();
                         mesh.material.set({
-                            roughness: 0.8
+                            roughness: 0.2
                         });
                         mesh.material.get('diffuseMap').anisotropic = 8;
                         mesh.material.normalMap = normalMap;
@@ -36,7 +36,7 @@ export default class Fishes {
             });
             for (let i = 0; i < 500; i++) {
                 const boid = new Boid();
-                boid.velocity.x = Math.random() * 0.2 - 0.1;
+                boid.velocity.x = Math.random() * 2 - 1;
                 boid.velocity.y = Math.random() * 0.2 - 0.1;
                 boid.velocity.z = Math.random() * 2 - 1;
                 boid.setAvoidWalls(false);
@@ -61,9 +61,9 @@ export default class Fishes {
 
     randomPositionInBox(box) {
         this._boids.forEach(boid => {
-            boid.position.x = Math.random() * (box.max.x - box.min.x) + box.min.x;
-            boid.position.y = Math.random() * (box.max.y - box.min.y) + box.min.y - this._rootNode.position.y;
-            boid.position.z = Math.random() * (box.max.z - box.min.z) + box.min.z;
+            boid.position.x = (Math.random() - 0.5) * 0.2 * (box.max.x - box.min.x);
+            boid.position.y = (Math.random() - 0.5) * 0.2 * (box.max.y - box.min.y);
+            boid.position.z = (Math.random() - 0.5) * 0.2 * (box.max.z - box.min.z);
         }, this);
     }
 
@@ -74,7 +74,7 @@ export default class Fishes {
 
         if (width && height && depth) {
             this._boids.forEach(boid => {
-                boid.setWorldSize(width, height, depth);
+                boid.setWorldSize(width / 2, height / 2, depth / 2);
                 boid.setAvoidWalls(true);
             });
         }
@@ -85,7 +85,7 @@ export default class Fishes {
         }
 
         // PENDING
-        this._rootNode.position.y = height + box.min.y;
+        this._rootNode.position.y = -box.min.y + height / 2;
     }
 
     update(dTime) {
@@ -110,7 +110,7 @@ export default class Fishes {
 
     goTo(position, radius) {
         const boids = this._boids;
-        for (const i = 0; i < boids.length; i++) {
+        for (let i = 0; i < boids.length; i++) {
             const boid = boids[i];
             const goal = boid.__goal || (boid.__goal = new Vector3());
             goal.copy(position);
@@ -128,6 +128,21 @@ export default class Fishes {
 
             boid.setGoal(boid.__goal);
             boid.setGoalIntensity(0.02);
+        }
+    }
+
+    getCenter() {
+        const boids = this._boids;
+        const center = new Vector3();
+
+        if (boids.length > 0) {
+            for (let i = 0; i < boids.length; i++) {
+                Vector3.add(center, center, boids[i].position);
+            }
+            Vector3.scale(center, center, 1 / boids.length);
+            Vector3.add(center, center, this._rootNode.position);
+
+            return center;
         }
     }
 }

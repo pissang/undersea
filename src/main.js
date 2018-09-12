@@ -18,6 +18,7 @@ import {
 import Fishes from './Fishes';
 import Terrain from './Terrain';
 import loadModel from './loadModel';
+import throttle from 'lodash.throttle';
 
 Shader.import(require('raw-loader!./waterplane.glsl'));
 Shader.import(require('raw-loader!./forward_caustics.glsl'));
@@ -37,7 +38,10 @@ var config = {
     fogColor1: [36, 50, 95],
 
     sceneColor: [144, 190, 200],
-    ambientIntensity: 0.2
+    ambientIntensity: 0.2,
+
+    cameraAcceleration: 0.0002,
+    cameraMaxSpeed: 1
 };
 
 application.create(document.getElementById('main'), {
@@ -52,7 +56,18 @@ application.create(document.getElementById('main'), {
     },
 
     init(app) {
-        const camera = app.createCamera([0, 30, 30], [0, 30, -1]);
+        const camera = app.createCamera([0, 50, 150], [0, 50, -1]);
+        camera.far = 3000;
+        this._camera = camera;
+        this._cameraSpeed = new Vector3();
+        this._cameraAcceleration = new Vector3();
+        setInterval(() => {
+            const fishesCenter = this._fishes.getCenter();
+            if (fishesCenter) {
+                this._cameraAcceleration = fishesCenter.sub(this._camera.position);
+                this._cameraAcceleration.scale(config.cameraAcceleration);
+            }
+        }, 100);
 
         const terrain = new Terrain(causticsShader);
         const terrainPlane = terrain.getRootNode();
@@ -64,11 +79,10 @@ application.create(document.getElementById('main'), {
 
         const fishes = new Fishes(causticsShader, function () {
             const box = new BoundingBox();
-            box.min.set(-60, 0, -60);
-            box.max.set(60, 40, 60);
-            fishes.randomPositionInBox(box);
-
+            box.min.set(-500, 0, -500);
+            box.max.set(500, 120, 500);
             fishes.setWorldSize(box);
+            fishes.randomPositionInBox(box);
         });
         this._fishes = fishes;
 
@@ -101,22 +115,23 @@ application.create(document.getElementById('main'), {
         const cube = app.createCubeInside({
             shader: causticsShader
         });
-        cube.scale.set(500, 500, 500);
+        cube.scale.set(1000, 1000, 1000);
         cube.castShadow = false;
-        // var plane = new Plane();
-        // var setGoalAround = throttle(function (e) {
-        //     if (config.text) {
-        //         return;
-        //     }
-        //     var v2 = app.renderer.screenToNdc(e.offsetX, e.offsetY);
-        //     var ray = camera.castRay(v2);
-        //     plane.normal.copy(camera.worldTransform.z);
-        //     plane.distance = 0;
 
-        //     var out = ray.intersectPlane(plane);
-        //     fishes.goTo(out, 10);
-        // }, 500);
+        const plane = new Plane();
+        const setGoalAround = throttle(function (x, y) {
+            const v2 = app.renderer.screenToNDC(x, y);
+            const ray = camera.castRay(v2);
+            plane.normal.copy(camera.worldTransform.z);
+            plane.distance = -10;
 
+            const out = ray.intersectPlane(plane);
+            fishes.goTo(out, 10);
+        }, 500);
+
+        document.body.addEventListener('mousemove', function (e) {
+            // setGoalAround(e.clientX, e.clientY);
+        });
     },
 
     _loadWhale(app) {
@@ -237,11 +252,20 @@ application.create(document.getElementById('main'), {
                 mesh.material.set('fogColor0', normalizeColor(config.fogColor0));
                 mesh.material.set('fogColor1', normalizeColor(config.fogColor1));
                 mesh.material.set('fogDensity', config.fogDensity);
-                mesh.material.set('fogRange', 2);
+                mesh.material.set('fogRange', 4);
 
                 mesh.material.set('causticsScale', config.causticsScale);
                 mesh.material.set('causticsIntensity', config.causticsIntensity);
             }
         });
+
+        this._cameraSpeed.add(this._cameraAcceleration);
+        if (this._cameraSpeed.len() > 0) {
+            this._cameraSpeed.scale(Math.max(config.cameraMaxSpeed / this._cameraSpeed.len()), 1);
+
+            const newPos = this._camera.position.clone().add(this._cameraSpeed);
+            this._camera.lookAt(newPos, Vector3.UP);
+            this._camera.position.copy(newPos);
+        }
     }
 });
