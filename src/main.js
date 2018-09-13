@@ -87,7 +87,7 @@ application.create(document.getElementById('main'), {
         this._fishes = fishes;
 
         app.scene.add(fishes.getRootNode());
-        // this._loadWhale(app);
+        this._loadWhale(app);
 
         this._createWaterPlane(app);
 
@@ -141,7 +141,7 @@ application.create(document.getElementById('main'), {
             shader: causticsShader
         }).then(result => {
             const moveNode = new clayNode();
-            result.rootNode.scale.set(1, 1, 1);
+            result.rootNode.scale.set(10, 10, 10);
             result.rootNode.rotation.rotateY(-Math.PI / 4);
             moveNode.add(result.rootNode);
             app.scene.add(moveNode);
@@ -178,10 +178,8 @@ application.create(document.getElementById('main'), {
                 .during(function () {
                     Vector3.sub(dir, moveNode.position, oldPosition);
                     if (dir.len()) {
-                        Vector3.normalize(dir, dir);
-                        moveNode.update();
-                        moveNode.worldTransform.z = dir;
-                        moveNode.decomposeWorldTransform();
+                        moveNode.lookAt(oldPosition, Vector3.UP);
+                        moveNode.y += 40;
                         // TODO
                         moveNode.scale.set(1, 1, 1);
                     }

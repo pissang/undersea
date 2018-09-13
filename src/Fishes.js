@@ -3,7 +3,7 @@ import loadModel from './loadModel';
 import Boid from './Boid';
 
 const fishIds = ['01', '02', '05', '07', '12'];
-
+const FISH_SCALE = 0.01;
 export default class Fishes {
     constructor(shader, cb) {
         this._rootNode = new clayNode();
@@ -46,7 +46,7 @@ export default class Fishes {
                 const randomFish = results[Math.round(Math.random() * (results.length - 1))];
                 const fishClone = randomFish.rootNode.clone();
 
-                fishClone.scale.set(0.01, 0.01, 0.01);
+                fishClone.scale.set(FISH_SCALE, FISH_SCALE, FISH_SCALE);
 
                 this._rootNode.add(fishClone);
                 this._boids.push(boid);
@@ -61,9 +61,9 @@ export default class Fishes {
 
     randomPositionInBox(box) {
         this._boids.forEach(boid => {
-            boid.position.x = (Math.random() - 0.5) * 0.2 * (box.max.x - box.min.x);
-            boid.position.y = (Math.random() - 0.5) * 0.2 * (box.max.y - box.min.y);
-            boid.position.z = (Math.random() - 0.5) * 0.2 * (box.max.z - box.min.z);
+            boid.position.x = (Math.random() - 0.5) * 0.4 * (box.max.x - box.min.x);
+            boid.position.y = (Math.random() - 0.5) * 0.4 * (box.max.y - box.min.y);
+            boid.position.z = (Math.random() - 0.5) * 0.4 * (box.max.z - box.min.z);
         }, this);
     }
 
@@ -90,20 +90,18 @@ export default class Fishes {
 
     update(dTime) {
         const boids = this._boids;
-        const z = new Vector3(0, 0, 1);
-        const dir = new Vector3();
+        const up = Vector3.UP;
+        const target = new Vector3();
         for (let i = 0; i < boids.length; i++) {
             const boid = boids[i];
             boid.run(boids);
 
             const fish = this._rootNode.childAt(i);
-            Vector3.normalize(dir, boid.velocity);
-            if (dir.len() > 0.01) {
-                fish.rotation.rotationTo(z, dir);
+            if (boid.velocity.squaredLength() > 0.01) {
+                Vector3.sub(target, fish.position, boid.velocity);
+                fish.lookAt(target, up);
+                fish.scale.set(FISH_SCALE, FISH_SCALE, FISH_SCALE);
             }
-            // fish.rotation.identity();
-            // fish.rotation.rotateY(Math.atan2(-boid.velocity.z, boid.velocity.x));
-            // fish.rotation.rotateX(Math.asin(boid.velocity.y / boid.velocity.len()));
             fish.position.copy(boid.position);
         }
     }
