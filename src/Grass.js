@@ -1,6 +1,6 @@
 // https://github.com/spacejack/terra
 
-import {Mesh, Shader, Material, Geometry, Texture2D} from 'claygl';
+import {Mesh, Shader, Material, Geometry, Texture2D, BoundingBox} from 'claygl';
 import SimplexNoise from 'simplex-noise';
 
 import grassGlslCode from './grass.glsl';
@@ -95,7 +95,6 @@ export default class Grass {
         const radius = this._radius = opts.radius || 120;
 
         const mesh = this._mesh = new Mesh({
-            castShadow: false,
             geometry: new Geometry({
                 attributes: {
                     vindex: new Geometry.Attribute('vindex', 'float', 1),
@@ -123,18 +122,20 @@ export default class Grass {
         initBladeIndexVerts(geo.attributes.vindex.value, numBlades);
 
         const mat = mesh.material;
-        mat.set('windIntensity', windIntensity);
-        mat.set('heightMapScale', [1, 1, 4]);   // TODO
+
+        function setMaterialCommonParameter(mat) {
+            mat.set('windIntensity', windIntensity);
+            mat.set('heightMapScale', [1, 1, 4]);   // TODO
+
+            mat.define('vertex', 'PATCH_SIZE', radius * 2);
+            mat.define('vertex', 'BLADE_SEGS', BLADE_SEGS);
+            mat.define('vertex', 'TRANSITION_LOW', opts.transitionLow || 0.31);
+            mat.define('vertex', 'TRANSITION_HIGH', opts.transitionHigh || 0.36);
+            mat.define('vertex', 'BLADE_HEIGHT_TALL', BLADE_HEIGHT_MAX);
+            mat.define('vertex', 'BLADE_DIVS', BLADE_SEGS + 1);
+            mat.define('vertex', 'BLADE_VERTS', (BLADE_SEGS + 1) * 2);
+        }
         mat.set('color', [0.45 * 5, 0.46 * 5, 0.19 * 5]);
-
-        mat.define('vertex', 'PATCH_SIZE', radius * 2);
-        mat.define('vertex', 'BLADE_SEGS', BLADE_SEGS);
-        mat.define('vertex', 'TRANSITION_LOW', opts.transitionLow || 0.31);
-        mat.define('vertex', 'TRANSITION_HIGH', opts.transitionHigh || 0.36);
-        mat.define('vertex', 'BLADE_HEIGHT_TALL', BLADE_HEIGHT_MAX);
-        mat.define('vertex', 'BLADE_DIVS', BLADE_SEGS + 1);
-        mat.define('vertex', 'BLADE_VERTS', (BLADE_SEGS + 1) * 2);
-
         mat.define('VERTEX_COLOR');
 
         const heightMap = new Texture2D();
@@ -144,6 +145,16 @@ export default class Grass {
         mat.set('diffuseMap', diffuseMap);
         mat.set('heightMap', heightMap);
 
+
+        setMaterialCommonParameter(mat);
+
+        const shadowDepthMaterial = mesh.shadowDepthMaterial = new Material({
+            shader: new Shader(Shader.source('grass.vertex'), Shader.source('clay.sm.depth.fragment'))
+        });
+        setMaterialCommonParameter(shadowDepthMaterial);
+        shadowDepthMaterial.define('vertex', 'SHADOW_DEPTH');
+        shadowDepthMaterial.set('heightMap', heightMap);
+
         this._elapsedTime = 0;
     }
 
@@ -152,15 +163,22 @@ export default class Grass {
     }
 
     update(time, camera) {
-        this._elapsedTime += time;
+        this._elapsedTime += time / 1000;
         const mesh = this._mesh;
+        const geo = mesh.geometry;
         const mat = mesh.material;
+        const shadowMat = mesh.shadowDepthMaterial;
         const forward = camera.worldTransform.z.clone().normalize().negate();
-        mat.set('time', this._elapsedTime / 1000);
         const drawPos = camera.position.clone().scaleAndAdd(forward, this._radius);
-        mat.set(
-            'drawPos',
-            [drawPos.x, drawPos.z]
-        );
+        mat.set('time', this._elapsedTime);
+        mat.set('drawPos', [drawPos.x, drawPos.z]);
+
+        shadowMat.set('time', this._elapsedTime);
+        shadowMat.set('drawPos', [drawPos.x, drawPos.z]);
+
+        geo.boundingBox = geo.boundingBox || new BoundingBox();
+        const size = this._radius * 1.2;
+        geo.boundingBox.min.set(drawPos.x - size, 0, drawPos.z - size);
+        geo.boundingBox.max.set(drawPos.x + size, BLADE_HEIGHT_MAX, drawPos.z + size);
     }
 };

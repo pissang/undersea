@@ -28,9 +28,14 @@ attribute vec4 offset; // {x:x, y:y, z:z, w:rot} (blade's position & rotation)
 attribute vec4 shape; // {x:width, y:height, z:lean, w:curve} (blade's shape properties)
 
 varying vec2 v_Texcoord;
+
+#ifdef SHADOW_DEPTH
+varying vec4 v_ViewPosition;
+#else
 varying vec3 v_Normal;
 varying vec3 v_WorldPosition;
 varying vec3 v_Barycentric;
+#endif
 
 #ifdef VERTEX_COLOR
 varying vec4 v_Color;
@@ -127,11 +132,6 @@ void main() {
 	vpos.y += bladePos.y;
 	vpos.z += altitude;
 
-	// grass texture coordinate for this vertex
-	v_Texcoord = vec2(bedge, di * 2.0);
-	v_Normal = normal.xzy;
-	v_WorldPosition = (worldMatrix * vec4(vpos.xzy, 1.0)).xyz;
-
 	gl_Position = projectionMatrix * worldViewMatrix * vec4(vpos.xzy, 1.0);
 
 	#ifdef VERTEX_COLOR
@@ -140,7 +140,16 @@ void main() {
 	v_Color = vec4(vec3(brightness), 1.0);
 	#endif
 
+	#ifdef SHADOW_DEPTH
+	v_ViewPosition = gl_Position;
+	#else
+	// grass texture coordinate for this vertex
+	v_Texcoord = vec2(bedge, di * 2.0);
+	v_Normal = normal.xzy;
+	v_WorldPosition = (worldMatrix * vec4(vpos.xzy, 1.0)).xyz;
+
 	v_Barycentric = vec3(1.0);
+	#endif
 }
 @end
 
