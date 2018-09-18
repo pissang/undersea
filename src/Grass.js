@@ -9,10 +9,10 @@ Shader.import(grassGlslCode);
 
 const BLADE_SEGS = 4; // # of blade segments
 const BLADE_VERTS = (BLADE_SEGS + 1) * 2; // # of vertices per blade (1 side)
-const BLADE_INDICES = BLADE_SEGS * 12;
+const BLADE_INDICES = BLADE_SEGS * 6;
 const BLADE_WIDTH = 1;
-const BLADE_HEIGHT_MIN = 50;
-const BLADE_HEIGHT_MAX = 200.0;
+const BLADE_HEIGHT_MIN = 10;
+const BLADE_HEIGHT_MAX = 60.0;
 
 /**
  * Sets up indices for single blade mesh.
@@ -34,18 +34,10 @@ function initBladeIndices(id, numBlades) {
             id[n++] = vtx + 2; // tri 2
             id[n++] = vtx + 1;
             id[n++] = vtx + 3;
-        }
-        // blade back side
-        for (seg = 0; seg < BLADE_SEGS; ++seg) {
-            id[n++] = vtx + 2; // tri 1
-            id[n++] = vtx + 1;
-            id[n++] = vtx + 0;
-            id[n++] = vtx + 3; // tri 2
-            id[n++] = vtx + 1;
-            id[n++] = vtx + 2;
-        }
 
-        vtx += BLADE_VERTS;
+            vtx += 2;
+        }
+        vtx += 2;
     }
 }
 
@@ -100,7 +92,7 @@ export default class Grass {
     constructor(opts = {}) {
         const numBlades = opts.numBlades || 6e3;
         const windIntensity = opts.windIntensity || 1.5;
-        const radius = this._radius = opts.radius || 200;
+        const radius = this._radius = opts.radius || 120;
 
         const mesh = this._mesh = new Mesh({
             castShadow: false,
@@ -116,7 +108,8 @@ export default class Grass {
                     Shader.source('grass.vertex'),
                     Shader.source('caustics.fragment')
                 )
-            })
+            }),
+            culling: false
         });
         const geo = mesh.geometry;
         geo.attributes.offset.init(numBlades * BLADE_VERTS);
@@ -132,7 +125,7 @@ export default class Grass {
         const mat = mesh.material;
         mat.set('windIntensity', windIntensity);
         mat.set('heightMapScale', [1, 1, 4]);   // TODO
-        mat.set('color', [0.45 * 3, 0.46 * 3, 0.19 * 3]);
+        mat.set('color', [0.45 * 5, 0.46 * 5, 0.19 * 5]);
 
         mat.define('vertex', 'PATCH_SIZE', radius * 2);
         mat.define('vertex', 'BLADE_SEGS', BLADE_SEGS);
