@@ -1,3 +1,4 @@
+export default `
 @export lightshaft.mask
 uniform sampler2D colorTexture;
 
@@ -55,3 +56,4 @@ void main()
 
 @export lightshaft.blend
 @end
+`;

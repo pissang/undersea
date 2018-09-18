@@ -18,7 +18,7 @@ export default loader.GLTF.extend({
             filePath: path,
             encoding: isBinary ? null : 'utf-8',
             success(res) {
-                const data = res.data;
+                let data = res.data;
                 if (isBinary) {
                     self.parseBinary(data);
                 }

@@ -1,14 +1,14 @@
-
+export default `
 // http://blog.selfshadow.com/publications/s2013-shading-course/
 
-@export forward_caustics.vertex
+@export caustics.vertex
 
 @import clay.standard.vertex
 
 @end
 
 
-@export forward_caustics.fragment
+@export caustics.fragment
 
 #define PI 3.14159265358979
 #define LOG2 1.442695
@@ -601,3 +601,4 @@ void main() {
     gl_FragColor = vec4(outColor.rgb, 1.0);
 }
 @end
+`;

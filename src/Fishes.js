@@ -16,25 +16,26 @@ export default class Fishes {
             });
         })).then(results => {
             results.forEach(function (result, idx) {
-                const normalMap = new Texture2D({
-                    anisotropic: 32
-                });
-                normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
+                // const normalMap = new Texture2D({
+                //     anisotropic: 32
+                // });
+                // normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
                 result.rootNode.traverse(function (mesh) {
                     if (mesh.material) {
-                        mesh.geometry.generateTangents();
-                        mesh.material.set({
-                            roughness: 0.2
-                        });
-                        mesh.material.get('diffuseMap').anisotropic = 8;
-                        mesh.material.normalMap = normalMap;
+                        // mesh.geometry.generateTangents();
+                        // mesh.material.set({
+                        //     roughness: 0.2
+                        // });
+                        // mesh.material.get('diffuseMap').anisotropic = 8;
+                        // mesh.material.normalMap = normalMap;
+                        // console.log(JSON.stringify(mesh.geometry.attributes.texcoord0.value));
                     }
                     if (fishIds[idx] === '15') {
                         mesh.rotation.rotateY(Math.PI / 2);
                     }
                 });
             });
-            for (let i = 0; i < 500; i++) {
+            for (let i = 0; i < 200; i++) {
                 const boid = new Boid();
                 boid.velocity.x = Math.random() * 2 - 1;
                 boid.velocity.y = Math.random() * 0.2 - 0.1;

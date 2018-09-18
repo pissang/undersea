@@ -6,15 +6,15 @@ export default class Terrain {
         var sandTexture = new Texture2D({
             anisotropic: 8
         });
-        var sandNormalTexture = new Texture2D({
-            anisotropic: 8
-        });
+        // var sandNormalTexture = new Texture2D({
+        //     anisotropic: 8
+        // });
         sandTexture.load('asset/texture/sand.jpg');
-        sandNormalTexture.load('asset/texture/sand_NRM.png');
+        // sandNormalTexture.load('asset/texture/sand_NRM.jpg');
         var plane = new Mesh({
             geometry: new geometry.Plane({
-                widthSegments: 100,
-                heightSegments: 100,
+                widthSegments: 10,
+                heightSegments: 10,
                 // Must mark as dynamic
                 dynamic: true
             }),
@@ -25,7 +25,7 @@ export default class Terrain {
         });
         plane.material.set({
             diffuseMap: sandTexture,
-            normalMap: sandNormalTexture,
+            // normalMap: sandNormalTexture,
             uvRepeat: [20, 20],
             roughness: 1
         });
@@ -50,11 +50,11 @@ export default class Terrain {
 
             self.updateHeightmap();
         };
-        img.src = 'asset/texture/terrain.png';
+        img.src = 'asset/texture/terrain.jpg';
     }
 
     updateHeightmap(opts = {}) {
-        const maxHeight = opts.maxHeight == null ? 10 : opts.maxHeight;
+        const maxHeight = opts.maxHeight == null ? 5 : opts.maxHeight;
         const heightData = this._heightData;
         if (!heightData) {
             return;
@@ -77,7 +77,8 @@ export default class Terrain {
 
             const idx = (y * width + x) * 4;
             const r = heightData[idx];
-            pos[2] = ((r / 255 - 0.5) * 4 + 0.5) * maxHeight;
+            // pos[2] = ((r / 255 - 0.5) * 4 + 0.5) * maxHeight
+            pos[2] = 0;
 
             positions.set(i, pos);
         }

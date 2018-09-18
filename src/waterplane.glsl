@@ -1,3 +1,4 @@
+export default `
 @export waterplane.vertex
 
 uniform mat4 worldViewProjection : WORLDVIEWPROJECTION;
@@ -51,7 +52,7 @@ uniform samplerCube environmentMap;
 uniform vec3 color : [1.0, 1.0, 1.0];
 uniform float alpha : 1.0;
 
-uniform float reflectivity : 0.5;
+uniform float reflectivity : 0.8;
 uniform float elapsedTime;
 
 uniform float fogDensity = 0.2;
@@ -106,3 +107,4 @@ void main()
 }
 
 @end
+`;

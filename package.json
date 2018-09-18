@@ -4,11 +4,12 @@
   "description": "",
   "dependencies": {
     "lodash.throttle": "^4.1.1",
-    "raw-loader": "^0.5.1"
+    "simplex-noise": "^2.4.0"
   },
   "scripts": {
     "build": "webpack",
-    "dev": "webpack --mode development --watch"
+    "dev": "webpack --mode development --watch",
+    "swan": "sgt dev --debug --swan-path ~/Develop/baidu/efe-blue/swan-game --output-dir swan"
   },
   "license": "MIT"
 }

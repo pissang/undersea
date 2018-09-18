@@ -1,0 +1,10 @@
+{
+    "bundle": {
+        "exclude": [
+            "dist/**/*",
+            "asset-raw/**/*",
+            "asset/**/*.fbx",
+            "asset/model/*_NRM.jpg"
+        ]
+    }
+}

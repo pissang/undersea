@@ -18,33 +18,37 @@ import {
 import Fishes from './Fishes';
 import Terrain from './Terrain';
 import loadModel from './loadModel';
+import Grass from './Grass';
 import throttle from 'lodash.throttle';
 
-Shader.import(require('raw-loader!./waterplane.glsl'));
-Shader.import(require('raw-loader!./forward_caustics.glsl'));
+import waterplaneCode from './waterplane.glsl';
+import causticsCode from './caustics.glsl';
+
+Shader.import(waterplaneCode);
+Shader.import(causticsCode);
 
 const causticsShader = new Shader(
-    Shader.source('forward_caustics.vertex'),
-    Shader.source('forward_caustics.fragment')
+    Shader.source('caustics.vertex'),
+    Shader.source('caustics.fragment')
 );
 
 var config = {
 
     causticsIntensity: 3,
-    causticsScale: 1,
+    causticsScale: 2,
 
     fogDensity: 0.14,
-    fogColor0: [36, 95, 85],
-    fogColor1: [36, 50, 95],
+    fogColor0: [56 * 1.5, 94 * 1.5, 80 * 1.5],
+    fogColor1: [56, 94, 70],
 
-    sceneColor: [144, 190, 200],
+    sceneColor: [137, 255, 212],
     ambientIntensity: 0.2,
 
     cameraAcceleration: 0.0002,
     cameraMaxSpeed: 1
 };
 
-application.create(document.getElementById('main'), {
+application.create(canvas, {
 
     width: window.innerWidth,
     height: window.innerHeight,
@@ -74,8 +78,13 @@ application.create(document.getElementById('main'), {
         terrainPlane.scale.set(1000, 1000, 1);
         terrainPlane.rotation.rotateX(-Math.PI / 2);
         terrainPlane.castShadow = false;
+
         app.scene.add(terrainPlane);
         app.scene.scale.set(0.1, 0.1, 0.1);
+
+        const grass = new Grass();
+        this._grass = grass;
+        app.scene.add(grass.getMesh());
 
         const fishes = new Fishes(causticsShader, function () {
             const box = new BoundingBox();
@@ -87,7 +96,7 @@ application.create(document.getElementById('main'), {
         this._fishes = fishes;
 
         app.scene.add(fishes.getRootNode());
-        this._loadWhale(app);
+        // this._loadWhale(app);
 
         this._createWaterPlane(app);
 
@@ -110,7 +119,7 @@ application.create(document.getElementById('main'), {
         this._causticsTexture = new Texture2D({
             anisotropic: 8
         });
-        this._causticsTexture.load('asset/texture/caustics.png');
+        this._causticsTexture.load('asset/texture/caustics.jpg');
 
         const cube = app.createCubeInside({
             shader: causticsShader
@@ -250,7 +259,7 @@ application.create(document.getElementById('main'), {
                 mesh.material.set('fogColor0', normalizeColor(config.fogColor0));
                 mesh.material.set('fogColor1', normalizeColor(config.fogColor1));
                 mesh.material.set('fogDensity', config.fogDensity);
-                mesh.material.set('fogRange', 4);
+                mesh.material.set('fogRange', 3);
 
                 mesh.material.set('causticsScale', config.causticsScale);
                 mesh.material.set('causticsIntensity', config.causticsIntensity);
@@ -265,5 +274,7 @@ application.create(document.getElementById('main'), {
             this._camera.lookAt(newPos, Vector3.UP);
             this._camera.position.copy(newPos);
         }
+
+        this._grass.update(app.frameTime, this._camera);
     }
 });

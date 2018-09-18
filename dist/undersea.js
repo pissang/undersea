@@ -39583,25 +39583,939 @@ __webpack_require__.r(__webpack_exports__);
 
 /***/ }),
 
-/***/ "./node_modules/raw-loader/index.js!./src/forward_caustics.glsl":
-/*!*************************************************************!*\
-  !*** ./node_modules/raw-loader!./src/forward_caustics.glsl ***!
-  \*************************************************************/
+/***/ "./node_modules/lodash.throttle/index.js":
+/*!***********************************************!*\
+  !*** ./node_modules/lodash.throttle/index.js ***!
+  \***********************************************/
 /*! no static exports found */
-/***/ (function(module, exports) {
+/***/ (function(module, exports, __webpack_require__) {
 
-module.exports = "\n// http://blog.selfshadow.com/publications/s2013-shading-course/\n\n@export forward_caustics.vertex\n\n@import clay.standard.vertex\n\n@end\n\n\n@export forward_caustics.fragment\n\n#define PI 3.14159265358979\n#define LOG2 1.442695\n\n#define GLOSSINESS_CHANNEL 0\n#define ROUGHNESS_CHANNEL 0\n#define METALNESS_CHANNEL 1\n\n#define DIFFUSEMAP_ALPHA_ALPHA\n\n\n@import clay.standard.chunk.varying\n\nuniform mat4 viewInverse : VIEWINVERSE;\n\n#ifdef NORMALMAP_ENABLED\nuniform sampler2D normalMap;\n#endif\n\n// Scalar multiplier applied to each normal vector of normal texture.\nuniform float normalScale: 1.0;\n\n#ifdef DIFFUSEMAP_ENABLED\nuniform sampler2D diffuseMap;\n#endif\n\n#ifdef SPECULARMAP_ENABLED\nuniform sampler2D specularMap;\n#endif\n\n#ifdef USE_ROUGHNESS\nuniform float roughness : 0.5;\n    #ifdef ROUGHNESSMAP_ENABLED\nuniform sampler2D roughnessMap;\n    #endif\n#else\nuniform float glossiness: 0.5;\n    #ifdef GLOSSINESSMAP_ENABLED\nuniform sampler2D glossinessMap;\n    #endif\n#endif\n\n#ifdef METALNESSMAP_ENABLED\nuniform sampler2D metalnessMap;\n#endif\n\n#ifdef OCCLUSIONMAP_ENABLED\nuniform sampler2D occlusionMap;\n#endif\n\n#ifdef ENVIRONMENTMAP_ENABLED\nuniform samplerCube environmentMap;\n\n// https://seblagarde.wordpress.com/2012/09/29/image-based-lighting-approaches-and-parallax-corrected-cubemap/\n    #ifdef PARALLAX_CORRECTED\nuniform vec3 environmentBoxMin;\nuniform vec3 environmentBoxMax;\n    #endif\n\n#endif\n\n#ifdef BRDFLOOKUP_ENABLED\nuniform sampler2D brdfLookup;\n#endif\n\n#ifdef EMISSIVEMAP_ENABLED\nuniform sampler2D emissiveMap;\n#endif\n\n#ifdef SSAOMAP_ENABLED\n// For ssao prepass\nuniform sampler2D ssaoMap;\nuniform vec4 viewport : VIEWPORT;\n#endif\n\n#ifdef AOMAP_ENABLED\nuniform sampler2D aoMap;\nuniform float aoIntensity;\n#endif\n\nuniform vec3 color : [1.0, 1.0, 1.0];\nuniform float alpha : 1.0;\n\n#ifdef ALPHA_TEST\nuniform float alphaCutoff: 0.9;\n#endif\n\n#ifdef USE_METALNESS\n// metalness workflow\nuniform float metalness : 0.0;\n#else\n// specular workflow\nuniform vec3 specularColor : [0.1, 0.1, 0.1];\n#endif\n\nuniform vec3 emission : [0.0, 0.0, 0.0];\n\nuniform float emissionIntensity: 1;\n\n// Uniforms for wireframe\nuniform float lineWidth : 0.0;\nuniform vec4 lineColor : [0.0, 0.0, 0.0, 0.6];\n\n// Max mipmap level of environment map\n#ifdef ENVIRONMENTMAP_PREFILTER\nuniform float maxMipmapLevel: 5;\n#endif\n\n// Caustics uniforms\nuniform mat4 lightViewMatrix;\n\nuniform sampler2D causticsTexture;\nuniform float causticsIntensity : 1.0;\nuniform float causticsScale : 4;\n\nuniform float elapsedTime: 0;\n\n// Fog uniforms\n// from 0.0 to 1.0\nuniform float fogDensity = 0.2;\nuniform vec3 fogColor0 = vec3(0.3, 0.3, 0.3);\nuniform vec3 fogColor1 = vec3(0.1, 0.1, 0.1);\n\nuniform vec3 sceneColor = vec3(1, 1, 1);\n// TODO\nuniform float fogRange = 4.0;\n\n@import clay.standard.chunk.light_header\n\n// Import util functions and uniforms needed\n@import clay.util.calculate_attenuation\n\n@import clay.util.edge_factor\n\n@import clay.util.rgbm\n\n@import clay.util.srgb\n\n@import clay.plugin.compute_shadow_map\n\n@import clay.util.parallax_correct\n\n@import clay.util.ACES\n\n// Motion_4WayChaos from Unreal Engine\n// https://www.youtube.com/watch?v=W8u7GONZzoY 16:57\nvec4 Motion_4WayChaos(sampler2D inputTexture, vec2 coord, float speed) {\n    vec4 tex1 = texture2D(inputTexture, coord + speed * vec2(0.1, 0.1) * elapsedTime);\n    vec4 tex2 = texture2D(inputTexture, coord + vec2(0.418, 0.355) + speed * vec2(-0.1, 0.1) * elapsedTime);\n    vec4 tex3 = texture2D(inputTexture, coord + vec2(0.865, 0.148) + speed * vec2(0.1, -0.1) * elapsedTime);\n    vec4 tex4 = texture2D(inputTexture, coord + vec2(0.651, 0.752) + speed * vec2(-0.1, -0.1) * elapsedTime);\n\n    return (tex1 + tex2 + tex3 + tex4) * 0.3;\n}\n\nfloat G_Smith(float g, float ndv, float ndl)\n{\n    // float k = (roughness+1.0) * (roughness+1.0) * 0.125;\n    float roughness = 1.0 - g;\n    float k = roughness * roughness / 2.0;\n    float G1V = ndv / (ndv * (1.0 - k) + k);\n    float G1L = ndl / (ndl * (1.0 - k) + k);\n    return G1L * G1V;\n}\n// Fresnel\nvec3 F_Schlick(float ndv, vec3 spec) {\n    return spec + (1.0 - spec) * pow(1.0 - ndv, 5.0);\n}\n\nfloat D_Phong(float g, float ndh) {\n    // from black ops 2\n    float a = pow(8192.0, g);\n    return (a + 2.0) / 8.0 * pow(ndh, a);\n}\n\nfloat D_GGX(float g, float ndh) {\n    float r = 1.0 - g;\n    float a = r * r;\n    float tmp = ndh * ndh * (a - 1.0) + 1.0;\n    return a / (PI * tmp * tmp);\n}\n\n#ifdef PARALLAXOCCLUSIONMAP_ENABLED\nuniform float parallaxOcclusionScale : 0.02;\nuniform float parallaxMaxLayers : 20;\nuniform float parallaxMinLayers : 5;\nuniform sampler2D parallaxOcclusionMap;\n\nmat3 transpose(in mat3 inMat)\n{\n    vec3 i0 = inMat[0];\n    vec3 i1 = inMat[1];\n    vec3 i2 = inMat[2];\n\n    return mat3(\n        vec3(i0.x, i1.x, i2.x),\n        vec3(i0.y, i1.y, i2.y),\n        vec3(i0.z, i1.z, i2.z)\n    );\n}\n// Modified from http://apoorvaj.io/exploring-bump-mapping-with-webgl.html\nvec2 parallaxUv(vec2 uv, vec3 viewDir)\n{\n    // Determine number of layers from angle between V and N\n    float numLayers = mix(parallaxMaxLayers, parallaxMinLayers, abs(dot(vec3(0.0, 0.0, 1.0), viewDir)));\n    float layerHeight = 1.0 / numLayers;\n    float curLayerHeight = 0.0;\n    vec2 deltaUv = viewDir.xy * parallaxOcclusionScale / (viewDir.z * numLayers);\n    vec2 curUv = uv;\n\n    float height = 1.0 - texture2D(parallaxOcclusionMap, curUv).r;\n\n    for (int i = 0; i < 30; i++) {\n        curLayerHeight += layerHeight;\n        curUv -= deltaUv;\n        height = 1.0 - texture2D(parallaxOcclusionMap, curUv).r;\n        if (height < curLayerHeight) {\n            break;\n        }\n    }\n\n    // Parallax occlusion mapping\n    vec2 prevUv = curUv + deltaUv;\n    float next = height - curLayerHeight;\n    float prev = 1.0 - texture2D(parallaxOcclusionMap, prevUv).r - curLayerHeight + layerHeight;\n    return mix(curUv, prevUv, next / (next - prev));\n}\n#endif\n\nvoid main() {\n\n    vec4 albedoColor = vec4(color, alpha);\n\n#ifdef VERTEX_COLOR\n    albedoColor *= v_Color;\n#endif\n\n#ifdef SRGB_DECODE\n    albedoColor = sRGBToLinear(albedoColor);\n#endif\n\n    vec3 eyePos = viewInverse[3].xyz;\n    vec3 V = normalize(eyePos - v_WorldPosition);\n\n    vec4 positionInLightSpace = lightViewMatrix * vec4(v_WorldPosition, 1.0);\n    positionInLightSpace.xyz /= positionInLightSpace.w;\n    vec2 causticsUv = positionInLightSpace.xz;\n    causticsUv *= 1.0 / 64.0 / causticsScale;\n    causticsUv += elapsedTime * 0.02;\n\n    vec3 causticsAffector = Motion_4WayChaos(causticsTexture, causticsUv, 0.5).rgb\n        * causticsIntensity;\n\n    vec2 uv = v_Texcoord;\n\n#if defined(PARALLAXOCCLUSIONMAP_ENABLED) || defined(NORMALMAP_ENABLED)\n    mat3 tbn = mat3(v_Tangent, v_Bitangent, v_Normal);\n#endif\n\n#ifdef PARALLAXOCCLUSIONMAP_ENABLED\n    uv = parallaxUv(v_Texcoord, normalize(transpose(tbn) * -V));\n#endif\n#ifdef DIFFUSEMAP_ENABLED\n    vec4 texel = texture2D(diffuseMap, uv);\n    #ifdef SRGB_DECODE\n    texel = sRGBToLinear(texel);\n    #endif\n    albedoColor.rgb *= texel.rgb;\n    #ifdef DIFFUSEMAP_ALPHA_ALPHA\n    albedoColor.a *= texel.a;\n    #endif\n\n#endif\n\n\n#ifdef USE_METALNESS\n    float m = metalness;\n\n    #ifdef METALNESSMAP_ENABLED\n    float m2 = texture2D(metalnessMap, uv)[METALNESS_CHANNEL];\n    // Adjust the brightness\n    m = clamp(m2 + (m - 0.5) * 2.0, 0.0, 1.0);\n    #endif\n\n    vec3 baseColor = albedoColor.rgb;\n    albedoColor.rgb = baseColor * (1.0 - m);\n    vec3 spec = mix(vec3(0.04), baseColor, m);\n#else\n    vec3 spec = specularColor;\n#endif\n\n#ifdef USE_ROUGHNESS\n    float g = clamp(1.0 - roughness, 0.0, 1.0);\n    #ifdef ROUGHNESSMAP_ENABLED\n    float g2 = 1.0 - texture2D(roughnessMap, uv)[ROUGHNESS_CHANNEL];\n    // Adjust the brightness\n    g = clamp(g2 + (g - 0.5) * 2.0, 0.0, 1.0);\n    #endif\n#else\n    float g = glossiness;\n    #ifdef GLOSSINESSMAP_ENABLED\n    float g2 = texture2D(glossinessMap, uv)[GLOSSINESS_CHANNEL];\n    // Adjust the brightness\n    g = clamp(g2 + (g - 0.5) * 2.0, 0.0, 1.0);\n    #endif\n#endif\n\n#ifdef SPECULARMAP_ENABLED\n    // Convert to linear space.\n    spec *= sRGBToLinear(texture2D(specularMap, uv)).rgb;\n#endif\n\n    vec3 N = v_Normal;\n\n#ifdef DOUBLE_SIDED\n    if (dot(N, V) < 0.0) {\n        N = -N;\n    }\n#endif\n\n#ifdef NORMALMAP_ENABLED\n    if (dot(v_Tangent, v_Tangent) > 0.0) {\n        vec3 normalTexel = texture2D(normalMap, uv).xyz;\n        if (dot(normalTexel, normalTexel) > 0.0) { // Valid normal map\n            N = (normalTexel * 2.0 - 1.0);\n            // Apply scalar multiplier to normal vector of texture.\n            N = normalize(N * vec3(normalScale, normalScale, 1.0));\n            // FIXME Why need to negate\n            tbn[1] = -tbn[1];\n            N = normalize(tbn * N);\n        }\n    }\n#endif\n\n    // Diffuse part of all lights\n    vec3 diffuseTerm = vec3(0.0, 0.0, 0.0);\n    // Specular part of all lights\n    vec3 specularTerm = vec3(0.0, 0.0, 0.0);\n\n    float ndv = clamp(dot(N, V), 0.0, 1.0);\n    vec3 fresnelTerm = F_Schlick(ndv, spec);\n\n#ifdef AMBIENT_LIGHT_COUNT\n    for(int _idx_ = 0; _idx_ < AMBIENT_LIGHT_COUNT; _idx_++)\n    {{\n        diffuseTerm += ambientLightColor[_idx_];\n    }}\n#endif\n\n#ifdef AMBIENT_SH_LIGHT_COUNT\n    for(int _idx_ = 0; _idx_ < AMBIENT_SH_LIGHT_COUNT; _idx_++)\n    {{\n        diffuseTerm += calcAmbientSHLight(_idx_, N) * ambientSHLightColor[_idx_];\n    }}\n#endif\n\n#ifdef POINT_LIGHT_COUNT\n#if defined(POINT_LIGHT_SHADOWMAP_COUNT)\n    float shadowContribsPoint[POINT_LIGHT_COUNT];\n    if(shadowEnabled)\n    {\n        computeShadowOfPointLights(v_WorldPosition, shadowContribsPoint);\n    }\n#endif\n    for(int _idx_ = 0; _idx_ < POINT_LIGHT_COUNT; _idx_++)\n    {{\n\n        vec3 lightPosition = pointLightPosition[_idx_];\n        vec3 lc = pointLightColor[_idx_];\n        float range = pointLightRange[_idx_];\n\n        vec3 L = lightPosition - v_WorldPosition;\n\n        // Calculate point light attenuation\n        float dist = length(L);\n        float attenuation = lightAttenuation(dist, range);\n        L /= dist;\n        vec3 H = normalize(L + V);\n        float ndl = clamp(dot(N, L), 0.0, 1.0);\n        float ndh = clamp(dot(N, H), 0.0, 1.0);\n\n        float shadowContrib = 1.0;\n#if defined(POINT_LIGHT_SHADOWMAP_COUNT)\n        if(shadowEnabled)\n        {\n            shadowContrib = shadowContribsPoint[_idx_];\n        }\n#endif\n\n        vec3 li = lc * ndl * attenuation * shadowContrib;\n        diffuseTerm += li;\n        specularTerm += li * fresnelTerm * D_Phong(g, ndh);\n    }}\n#endif\n\n#ifdef DIRECTIONAL_LIGHT_COUNT\n#if defined(DIRECTIONAL_LIGHT_SHADOWMAP_COUNT)\n    float shadowContribsDir[DIRECTIONAL_LIGHT_COUNT];\n    if(shadowEnabled)\n    {\n        computeShadowOfDirectionalLights(v_WorldPosition, shadowContribsDir);\n    }\n#endif\n    for(int _idx_ = 0; _idx_ < DIRECTIONAL_LIGHT_COUNT; _idx_++)\n    {{\n\n        vec3 L = -normalize(directionalLightDirection[_idx_]);\n        vec3 lc = directionalLightColor[_idx_] * causticsAffector;\n\n        vec3 H = normalize(L + V);\n        float ndl = clamp(dot(N, L), 0.0, 1.0);\n        float ndh = clamp(dot(N, H), 0.0, 1.0);\n\n        float shadowContrib = 1.0;\n#if defined(DIRECTIONAL_LIGHT_SHADOWMAP_COUNT)\n        if(shadowEnabled)\n        {\n            shadowContrib = shadowContribsDir[_idx_];\n        }\n#endif\n\n        vec3 li = lc * ndl * shadowContrib;\n\n        diffuseTerm += li;\n        specularTerm += li * fresnelTerm * D_Phong(g, ndh);\n    }}\n#endif\n\n#ifdef SPOT_LIGHT_COUNT\n#if defined(SPOT_LIGHT_SHADOWMAP_COUNT)\n    float shadowContribsSpot[SPOT_LIGHT_COUNT];\n    if(shadowEnabled)\n    {\n        computeShadowOfSpotLights(v_WorldPosition, shadowContribsSpot);\n    }\n#endif\n    for(int i = 0; i < SPOT_LIGHT_COUNT; i++)\n    {\n        vec3 lightPosition = spotLightPosition[i];\n        vec3 spotLightDirection = -normalize(spotLightDirection[i]);\n        vec3 lc = spotLightColor[i];\n        float range = spotLightRange[i];\n        float a = spotLightUmbraAngleCosine[i];\n        float b = spotLightPenumbraAngleCosine[i];\n        float falloffFactor = spotLightFalloffFactor[i];\n\n        vec3 L = lightPosition - v_WorldPosition;\n        // Calculate attenuation\n        float dist = length(L);\n        float attenuation = lightAttenuation(dist, range);\n\n        // Normalize light direction\n        L /= dist;\n        // Calculate spot light fall off\n        float c = dot(spotLightDirection, L);\n\n        float falloff;\n        // Fomular from real-time-rendering\n        falloff = clamp((c - a) /(b - a), 0.0, 1.0);\n        falloff = pow(falloff, falloffFactor);\n\n        vec3 H = normalize(L + V);\n        float ndl = clamp(dot(N, L), 0.0, 1.0);\n        float ndh = clamp(dot(N, H), 0.0, 1.0);\n\n        float shadowContrib = 1.0;\n#if defined(SPOT_LIGHT_SHADOWMAP_COUNT)\n        if (shadowEnabled)\n        {\n            shadowContrib = shadowContribsSpot[i];\n        }\n#endif\n\n        vec3 li = lc * attenuation * (1.0 - falloff) * shadowContrib * ndl;\n\n        diffuseTerm += li;\n        specularTerm += li * fresnelTerm * D_Phong(g, ndh);\n    }\n#endif\n\n    vec4 outColor = albedoColor;\n    outColor.rgb *= max(diffuseTerm, vec3(0.0));\n\n    outColor.rgb += max(specularTerm, vec3(0.0));\n\n\n#ifdef AMBIENT_CUBEMAP_LIGHT_COUNT\n    vec3 L = reflect(-V, N);\n    float rough2 = clamp(1.0 - g, 0.0, 1.0);\n    // FIXME fixed maxMipmapLevel ?\n    float bias2 = rough2 * 5.0;\n    // One brdf lookup is enough\n    vec2 brdfParam2 = texture2D(ambientCubemapLightBRDFLookup[0], vec2(rough2, ndv)).xy;\n    vec3 envWeight2 = spec * brdfParam2.x + brdfParam2.y;\n    vec3 envTexel2;\n    for(int _idx_ = 0; _idx_ < AMBIENT_CUBEMAP_LIGHT_COUNT; _idx_++)\n    {{\n    #ifdef SUPPORT_TEXTURE_LOD\n        envTexel2 = RGBMDecode(textureCubeLodEXT(ambientCubemapLightCubemap[_idx_], L, bias2), 8.12);\n    #else\n        envTexel2 = RGBMDecode(textureCube(ambientCubemapLightCubemap[_idx_], L), 8.12);\n    #endif\n        // TODO mix ?\n        outColor.rgb += ambientCubemapLightColor[_idx_] * envTexel2 * envWeight2;\n    }}\n#endif\n\n#ifdef ENVIRONMENTMAP_ENABLED\n\n    vec3 envWeight = g * fresnelTerm;\n    vec3 L = reflect(-V, N);\n\n    #ifdef PARALLAX_CORRECTED\n    L = parallaxCorrect(L, v_WorldPosition, environmentBoxMin, environmentBoxMax);\n#endif\n\n    #ifdef ENVIRONMENTMAP_PREFILTER\n    float rough = clamp(1.0 - g, 0.0, 1.0);\n    float bias = rough * maxMipmapLevel;\n    // PENDING Only env map can have HDR\n        #ifdef SUPPORT_TEXTURE_LOD\n    vec3 envTexel = decodeHDR(textureCubeLodEXT(environmentMap, L, bias)).rgb;\n        #else\n    vec3 envTexel = decodeHDR(textureCube(environmentMap, L)).rgb;\n        #endif\n\n        #ifdef BRDFLOOKUP_ENABLED\n    vec2 brdfParam = texture2D(brdfLookup, vec2(rough, ndv)).xy;\n    envWeight = spec * brdfParam.x + brdfParam.y;\n        #endif\n\n    #else\n    vec3 envTexel = textureCube(environmentMap, L).xyz;\n    #endif\n\n    outColor.rgb += envTexel * envWeight;\n#endif\n\n    float aoFactor = 1.0;\n#ifdef SSAOMAP_ENABLED\n    // PENDING\n    aoFactor = min(texture2D(ssaoMap, (gl_FragCoord.xy - viewport.xy) / viewport.zw).r, aoFactor);\n#endif\n\n#ifdef AOMAP_ENABLED\n    aoFactor = min(1.0 - clamp((1.0 - texture2D(aoMap, v_Texcoord2).r) * aoIntensity, 0.0, 1.0), aoFactor);\n#endif\n\n#ifdef OCCLUSIONMAP_ENABLED\n    // Use R channel for occlusion. Same with glTF.\n    aoFactor = min(1.0 - clamp((1.0 - texture2D(occlusionMap, v_Texcoord).r), 0.0, 1.0), aoFactor);\n#endif\n\n    outColor.rgb *= aoFactor;\n\n    vec3 lEmission = emission;\n#ifdef EMISSIVEMAP_ENABLED\n    lEmission *= texture2D(emissiveMap, uv).rgb;\n#endif\n    outColor.rgb += lEmission * emissionIntensity;\n\n    if(lineWidth > 0.)\n    {\n        outColor.rgb = mix(outColor.rgb, lineColor.rgb, (1.0 - edgeFactor(lineWidth)) * lineColor.a);\n    }\n\n#ifdef ALPHA_TEST\n    if (outColor.a < alphaCutoff) {\n        discard;\n    }\n#endif\n\n#ifdef TONEMAPPING\n    outColor.rgb = ACESToneMapping(outColor.rgb);\n#endif\n#ifdef SRGB_ENCODE\n    outColor = linearTosRGB(outColor);\n#endif\n\n    if (fogRange > 0.0) {\n        vec3 fogColor = mix(fogColor1, fogColor0, clamp(normalize(v_WorldPosition.xyz - eyePos).y, 0.0, 1.0));\n\n        float eyeDist = length(v_WorldPosition.xyz - eyePos) / fogRange;\n        outColor.rgb = mix(\n            fogColor, outColor.rgb, clamp(exp2(-fogDensity * fogDensity * eyeDist * eyeDist * LOG2), 0.0, 1.0)\n        ) // Simply use sceneColor to tint the color\n        * sceneColor;\n    }\n\n    gl_FragColor = vec4(outColor.rgb, 1.0);\n}\n@end"
+/* WEBPACK VAR INJECTION */(function(global) {/**
+ * lodash (Custom Build) <https://lodash.com/>
+ * Build: `lodash modularize exports="npm" -o ./`
+ * Copyright jQuery Foundation and other contributors <https://jquery.org/>
+ * Released under MIT license <https://lodash.com/license>
+ * Based on Underscore.js 1.8.3 <http://underscorejs.org/LICENSE>
+ * Copyright Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+ */
+
+/** Used as the `TypeError` message for "Functions" methods. */
+var FUNC_ERROR_TEXT = 'Expected a function';
+
+/** Used as references for various `Number` constants. */
+var NAN = 0 / 0;
+
+/** `Object#toString` result references. */
+var symbolTag = '[object Symbol]';
+
+/** Used to match leading and trailing whitespace. */
+var reTrim = /^\s+|\s+$/g;
+
+/** Used to detect bad signed hexadecimal string values. */
+var reIsBadHex = /^[-+]0x[0-9a-f]+$/i;
+
+/** Used to detect binary string values. */
+var reIsBinary = /^0b[01]+$/i;
+
+/** Used to detect octal string values. */
+var reIsOctal = /^0o[0-7]+$/i;
+
+/** Built-in method references without a dependency on `root`. */
+var freeParseInt = parseInt;
+
+/** Detect free variable `global` from Node.js. */
+var freeGlobal = typeof global == 'object' && global && global.Object === Object && global;
+
+/** Detect free variable `self`. */
+var freeSelf = typeof self == 'object' && self && self.Object === Object && self;
+
+/** Used as a reference to the global object. */
+var root = freeGlobal || freeSelf || Function('return this')();
+
+/** Used for built-in method references. */
+var objectProto = Object.prototype;
+
+/**
+ * Used to resolve the
+ * [`toStringTag`](http://ecma-international.org/ecma-262/7.0/#sec-object.prototype.tostring)
+ * of values.
+ */
+var objectToString = objectProto.toString;
+
+/* Built-in method references for those with the same name as other `lodash` methods. */
+var nativeMax = Math.max,
+    nativeMin = Math.min;
+
+/**
+ * Gets the timestamp of the number of milliseconds that have elapsed since
+ * the Unix epoch (1 January 1970 00:00:00 UTC).
+ *
+ * @static
+ * @memberOf _
+ * @since 2.4.0
+ * @category Date
+ * @returns {number} Returns the timestamp.
+ * @example
+ *
+ * _.defer(function(stamp) {
+ *   console.log(_.now() - stamp);
+ * }, _.now());
+ * // => Logs the number of milliseconds it took for the deferred invocation.
+ */
+var now = function() {
+  return root.Date.now();
+};
+
+/**
+ * Creates a debounced function that delays invoking `func` until after `wait`
+ * milliseconds have elapsed since the last time the debounced function was
+ * invoked. The debounced function comes with a `cancel` method to cancel
+ * delayed `func` invocations and a `flush` method to immediately invoke them.
+ * Provide `options` to indicate whether `func` should be invoked on the
+ * leading and/or trailing edge of the `wait` timeout. The `func` is invoked
+ * with the last arguments provided to the debounced function. Subsequent
+ * calls to the debounced function return the result of the last `func`
+ * invocation.
+ *
+ * **Note:** If `leading` and `trailing` options are `true`, `func` is
+ * invoked on the trailing edge of the timeout only if the debounced function
+ * is invoked more than once during the `wait` timeout.
+ *
+ * If `wait` is `0` and `leading` is `false`, `func` invocation is deferred
+ * until to the next tick, similar to `setTimeout` with a timeout of `0`.
+ *
+ * See [David Corbacho's article](https://css-tricks.com/debouncing-throttling-explained-examples/)
+ * for details over the differences between `_.debounce` and `_.throttle`.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Function
+ * @param {Function} func The function to debounce.
+ * @param {number} [wait=0] The number of milliseconds to delay.
+ * @param {Object} [options={}] The options object.
+ * @param {boolean} [options.leading=false]
+ *  Specify invoking on the leading edge of the timeout.
+ * @param {number} [options.maxWait]
+ *  The maximum time `func` is allowed to be delayed before it's invoked.
+ * @param {boolean} [options.trailing=true]
+ *  Specify invoking on the trailing edge of the timeout.
+ * @returns {Function} Returns the new debounced function.
+ * @example
+ *
+ * // Avoid costly calculations while the window size is in flux.
+ * jQuery(window).on('resize', _.debounce(calculateLayout, 150));
+ *
+ * // Invoke `sendMail` when clicked, debouncing subsequent calls.
+ * jQuery(element).on('click', _.debounce(sendMail, 300, {
+ *   'leading': true,
+ *   'trailing': false
+ * }));
+ *
+ * // Ensure `batchLog` is invoked once after 1 second of debounced calls.
+ * var debounced = _.debounce(batchLog, 250, { 'maxWait': 1000 });
+ * var source = new EventSource('/stream');
+ * jQuery(source).on('message', debounced);
+ *
+ * // Cancel the trailing debounced invocation.
+ * jQuery(window).on('popstate', debounced.cancel);
+ */
+function debounce(func, wait, options) {
+  var lastArgs,
+      lastThis,
+      maxWait,
+      result,
+      timerId,
+      lastCallTime,
+      lastInvokeTime = 0,
+      leading = false,
+      maxing = false,
+      trailing = true;
+
+  if (typeof func != 'function') {
+    throw new TypeError(FUNC_ERROR_TEXT);
+  }
+  wait = toNumber(wait) || 0;
+  if (isObject(options)) {
+    leading = !!options.leading;
+    maxing = 'maxWait' in options;
+    maxWait = maxing ? nativeMax(toNumber(options.maxWait) || 0, wait) : maxWait;
+    trailing = 'trailing' in options ? !!options.trailing : trailing;
+  }
+
+  function invokeFunc(time) {
+    var args = lastArgs,
+        thisArg = lastThis;
+
+    lastArgs = lastThis = undefined;
+    lastInvokeTime = time;
+    result = func.apply(thisArg, args);
+    return result;
+  }
+
+  function leadingEdge(time) {
+    // Reset any `maxWait` timer.
+    lastInvokeTime = time;
+    // Start the timer for the trailing edge.
+    timerId = setTimeout(timerExpired, wait);
+    // Invoke the leading edge.
+    return leading ? invokeFunc(time) : result;
+  }
+
+  function remainingWait(time) {
+    var timeSinceLastCall = time - lastCallTime,
+        timeSinceLastInvoke = time - lastInvokeTime,
+        result = wait - timeSinceLastCall;
+
+    return maxing ? nativeMin(result, maxWait - timeSinceLastInvoke) : result;
+  }
+
+  function shouldInvoke(time) {
+    var timeSinceLastCall = time - lastCallTime,
+        timeSinceLastInvoke = time - lastInvokeTime;
+
+    // Either this is the first call, activity has stopped and we're at the
+    // trailing edge, the system time has gone backwards and we're treating
+    // it as the trailing edge, or we've hit the `maxWait` limit.
+    return (lastCallTime === undefined || (timeSinceLastCall >= wait) ||
+      (timeSinceLastCall < 0) || (maxing && timeSinceLastInvoke >= maxWait));
+  }
+
+  function timerExpired() {
+    var time = now();
+    if (shouldInvoke(time)) {
+      return trailingEdge(time);
+    }
+    // Restart the timer.
+    timerId = setTimeout(timerExpired, remainingWait(time));
+  }
+
+  function trailingEdge(time) {
+    timerId = undefined;
+
+    // Only invoke if we have `lastArgs` which means `func` has been
+    // debounced at least once.
+    if (trailing && lastArgs) {
+      return invokeFunc(time);
+    }
+    lastArgs = lastThis = undefined;
+    return result;
+  }
+
+  function cancel() {
+    if (timerId !== undefined) {
+      clearTimeout(timerId);
+    }
+    lastInvokeTime = 0;
+    lastArgs = lastCallTime = lastThis = timerId = undefined;
+  }
+
+  function flush() {
+    return timerId === undefined ? result : trailingEdge(now());
+  }
+
+  function debounced() {
+    var time = now(),
+        isInvoking = shouldInvoke(time);
+
+    lastArgs = arguments;
+    lastThis = this;
+    lastCallTime = time;
+
+    if (isInvoking) {
+      if (timerId === undefined) {
+        return leadingEdge(lastCallTime);
+      }
+      if (maxing) {
+        // Handle invocations in a tight loop.
+        timerId = setTimeout(timerExpired, wait);
+        return invokeFunc(lastCallTime);
+      }
+    }
+    if (timerId === undefined) {
+      timerId = setTimeout(timerExpired, wait);
+    }
+    return result;
+  }
+  debounced.cancel = cancel;
+  debounced.flush = flush;
+  return debounced;
+}
+
+/**
+ * Creates a throttled function that only invokes `func` at most once per
+ * every `wait` milliseconds. The throttled function comes with a `cancel`
+ * method to cancel delayed `func` invocations and a `flush` method to
+ * immediately invoke them. Provide `options` to indicate whether `func`
+ * should be invoked on the leading and/or trailing edge of the `wait`
+ * timeout. The `func` is invoked with the last arguments provided to the
+ * throttled function. Subsequent calls to the throttled function return the
+ * result of the last `func` invocation.
+ *
+ * **Note:** If `leading` and `trailing` options are `true`, `func` is
+ * invoked on the trailing edge of the timeout only if the throttled function
+ * is invoked more than once during the `wait` timeout.
+ *
+ * If `wait` is `0` and `leading` is `false`, `func` invocation is deferred
+ * until to the next tick, similar to `setTimeout` with a timeout of `0`.
+ *
+ * See [David Corbacho's article](https://css-tricks.com/debouncing-throttling-explained-examples/)
+ * for details over the differences between `_.throttle` and `_.debounce`.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Function
+ * @param {Function} func The function to throttle.
+ * @param {number} [wait=0] The number of milliseconds to throttle invocations to.
+ * @param {Object} [options={}] The options object.
+ * @param {boolean} [options.leading=true]
+ *  Specify invoking on the leading edge of the timeout.
+ * @param {boolean} [options.trailing=true]
+ *  Specify invoking on the trailing edge of the timeout.
+ * @returns {Function} Returns the new throttled function.
+ * @example
+ *
+ * // Avoid excessively updating the position while scrolling.
+ * jQuery(window).on('scroll', _.throttle(updatePosition, 100));
+ *
+ * // Invoke `renewToken` when the click event is fired, but not more than once every 5 minutes.
+ * var throttled = _.throttle(renewToken, 300000, { 'trailing': false });
+ * jQuery(element).on('click', throttled);
+ *
+ * // Cancel the trailing throttled invocation.
+ * jQuery(window).on('popstate', throttled.cancel);
+ */
+function throttle(func, wait, options) {
+  var leading = true,
+      trailing = true;
+
+  if (typeof func != 'function') {
+    throw new TypeError(FUNC_ERROR_TEXT);
+  }
+  if (isObject(options)) {
+    leading = 'leading' in options ? !!options.leading : leading;
+    trailing = 'trailing' in options ? !!options.trailing : trailing;
+  }
+  return debounce(func, wait, {
+    'leading': leading,
+    'maxWait': wait,
+    'trailing': trailing
+  });
+}
+
+/**
+ * Checks if `value` is the
+ * [language type](http://www.ecma-international.org/ecma-262/7.0/#sec-ecmascript-language-types)
+ * of `Object`. (e.g. arrays, functions, objects, regexes, `new Number(0)`, and `new String('')`)
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is an object, else `false`.
+ * @example
+ *
+ * _.isObject({});
+ * // => true
+ *
+ * _.isObject([1, 2, 3]);
+ * // => true
+ *
+ * _.isObject(_.noop);
+ * // => true
+ *
+ * _.isObject(null);
+ * // => false
+ */
+function isObject(value) {
+  var type = typeof value;
+  return !!value && (type == 'object' || type == 'function');
+}
+
+/**
+ * Checks if `value` is object-like. A value is object-like if it's not `null`
+ * and has a `typeof` result of "object".
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is object-like, else `false`.
+ * @example
+ *
+ * _.isObjectLike({});
+ * // => true
+ *
+ * _.isObjectLike([1, 2, 3]);
+ * // => true
+ *
+ * _.isObjectLike(_.noop);
+ * // => false
+ *
+ * _.isObjectLike(null);
+ * // => false
+ */
+function isObjectLike(value) {
+  return !!value && typeof value == 'object';
+}
+
+/**
+ * Checks if `value` is classified as a `Symbol` primitive or object.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a symbol, else `false`.
+ * @example
+ *
+ * _.isSymbol(Symbol.iterator);
+ * // => true
+ *
+ * _.isSymbol('abc');
+ * // => false
+ */
+function isSymbol(value) {
+  return typeof value == 'symbol' ||
+    (isObjectLike(value) && objectToString.call(value) == symbolTag);
+}
+
+/**
+ * Converts `value` to a number.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to process.
+ * @returns {number} Returns the number.
+ * @example
+ *
+ * _.toNumber(3.2);
+ * // => 3.2
+ *
+ * _.toNumber(Number.MIN_VALUE);
+ * // => 5e-324
+ *
+ * _.toNumber(Infinity);
+ * // => Infinity
+ *
+ * _.toNumber('3.2');
+ * // => 3.2
+ */
+function toNumber(value) {
+  if (typeof value == 'number') {
+    return value;
+  }
+  if (isSymbol(value)) {
+    return NAN;
+  }
+  if (isObject(value)) {
+    var other = typeof value.valueOf == 'function' ? value.valueOf() : value;
+    value = isObject(other) ? (other + '') : other;
+  }
+  if (typeof value != 'string') {
+    return value === 0 ? value : +value;
+  }
+  value = value.replace(reTrim, '');
+  var isBinary = reIsBinary.test(value);
+  return (isBinary || reIsOctal.test(value))
+    ? freeParseInt(value.slice(2), isBinary ? 2 : 8)
+    : (reIsBadHex.test(value) ? NAN : +value);
+}
+
+module.exports = throttle;
+
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../../../../../../../usr/local/lib/node_modules/webpack/buildin/global.js */ "../../../../../usr/local/lib/node_modules/webpack/buildin/global.js")))
 
 /***/ }),
 
-/***/ "./node_modules/raw-loader/index.js!./src/waterplane.glsl":
-/*!*******************************************************!*\
-  !*** ./node_modules/raw-loader!./src/waterplane.glsl ***!
-  \*******************************************************/
+/***/ "./node_modules/simplex-noise/simplex-noise.js":
+/*!*****************************************************!*\
+  !*** ./node_modules/simplex-noise/simplex-noise.js ***!
+  \*****************************************************/
 /*! no static exports found */
-/***/ (function(module, exports) {
+/***/ (function(module, exports, __webpack_require__) {
 
-module.exports = "@export waterplane.vertex\n\nuniform mat4 worldViewProjection : WORLDVIEWPROJECTION;\nuniform mat4 worldInverseTranspose : WORLDINVERSETRANSPOSE;\nuniform mat4 world : WORLD;\n\nuniform vec2 uvRepeat = vec2(1.0, 1.0);\nuniform vec2 uvOffset = vec2(0.0, 0.0);\n\nattribute vec3 position : POSITION;\nattribute vec2 texcoord : TEXCOORD_0;\nattribute vec3 normal : NORMAL;\n\nvarying vec2 v_Texcoord;\nvarying vec3 v_Normal;\nvarying vec3 v_WorldPosition;\n\n\nvoid main()\n{\n\n    gl_Position = worldViewProjection * vec4(position, 1.0);\n\n    v_Texcoord = texcoord * uvRepeat + uvOffset;\n    v_WorldPosition = (world * vec4(position, 1.0)).xyz;\n\n    v_Normal = normalize((worldInverseTranspose * vec4(normal, 0.0)).xyz);\n\n}\n\n@end\n\n@export waterplane.fragment\n\n#define LOG2 1.442695\n\nuniform mat4 viewInverse : VIEWINVERSE;\n\nvarying vec2 v_Texcoord;\nvarying vec3 v_Normal;\nvarying vec3 v_WorldPosition;\n\n#ifdef NORMALMAP_ENABLED\nuniform sampler2D normalMap;\n#endif\n\n#ifdef ENVIRONMENTMAP_ENABLED\nuniform samplerCube environmentMap;\n#endif\n\nuniform vec3 color : [1.0, 1.0, 1.0];\nuniform float alpha : 1.0;\n\nuniform float reflectivity : 0.5;\nuniform float elapsedTime;\n\nuniform float fogDensity = 0.2;\nuniform vec3 fogColor0 = vec3(0.3, 0.3, 0.3);\nuniform vec3 fogColor1 = vec3(0.1, 0.1, 0.1);\n\nuniform vec3 sceneColor = vec3(1, 1, 1);\n// TODO\nuniform float fogRange = 4.0;\n\nvec4 getNoise(vec2 uv)\n{\n\tvec2 uv0 = (uv / 103.0) + vec2(elapsedTime / 17.0, elapsedTime / 29.0);\n\tvec2 uv1 = uv / 107.0-vec2( elapsedTime / -19.0, elapsedTime / 31.0 );\n\tvec2 uv2 = uv / vec2( 8907.0, 9803.0 ) + vec2( elapsedTime / 101.0, elapsedTime / 97.0 );\n\tvec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - vec2( elapsedTime / 109.0, elapsedTime / -113.0 );\n\tvec4 noise = texture2D(normalMap, uv0) +\n\t\ttexture2D(normalMap, uv1) +\n\t\ttexture2D(normalMap, uv2) +\n\t\ttexture2D(normalMap, uv3);\n\treturn noise * 0.5 - 1.0;\n}\n\nvoid main()\n{\n    vec4 outColor = vec4(color, alpha);\n\n    vec3 eyePos = viewInverse[3].xyz;\n    vec3 viewDirection = normalize(eyePos - v_WorldPosition);\n\n    vec3 normal = v_Normal;\n#ifdef NORMALMAP_ENABLED\n    normal = normalize(getNoise(v_WorldPosition.xz * 6.0).xyz * vec3( 1.5, 1.0, 1.5 ) );\n#endif\n\n#ifdef ENVIRONMENTMAP_ENABLED\n    vec3 envTexel = textureCube(environmentMap, reflect(-viewDirection, normal)).xyz;\n    outColor.rgb = outColor.rgb + envTexel * reflectivity;\n#endif\n\n    if (fogRange > 0.0) {\n        vec3 fogColor = mix(fogColor1, fogColor0, clamp(normalize(v_WorldPosition.xyz - eyePos).y, 0.0, 1.0));\n\n        float eyeDist = length(v_WorldPosition.xyz - eyePos) / fogRange;\n        outColor.rgb = mix(\n            fogColor, outColor.rgb, clamp(exp2(-fogDensity * fogDensity * eyeDist * eyeDist * LOG2), 0.0, 1.0)\n        ) // Simply use sceneColor to tint the color\n        * sceneColor;\n    }\n\n    gl_FragColor = vec4(outColor.rgb, 1.0);\n}\n\n@end"
+var __WEBPACK_AMD_DEFINE_RESULT__;/*
+ * A fast javascript implementation of simplex noise by Jonas Wagner
+
+Based on a speed-improved simplex noise algorithm for 2D, 3D and 4D in Java.
+Which is based on example code by Stefan Gustavson (stegu@itn.liu.se).
+With Optimisations by Peter Eastman (peastman@drizzle.stanford.edu).
+Better rank ordering method by Stefan Gustavson in 2012.
+
+
+ Copyright (c) 2018 Jonas Wagner
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+ */
+(function() {
+  'use strict';
+
+  var F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
+  var G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
+  var F3 = 1.0 / 3.0;
+  var G3 = 1.0 / 6.0;
+  var F4 = (Math.sqrt(5.0) - 1.0) / 4.0;
+  var G4 = (5.0 - Math.sqrt(5.0)) / 20.0;
+
+  function SimplexNoise(randomOrSeed) {
+    var random;
+    if (typeof randomOrSeed == 'function') {
+      random = randomOrSeed;
+    }
+    else if (randomOrSeed) {
+      random = alea(randomOrSeed);
+    } else {
+      random = Math.random;
+    }
+    this.p = buildPermutationTable(random);
+    this.perm = new Uint8Array(512);
+    this.permMod12 = new Uint8Array(512);
+    for (var i = 0; i < 512; i++) {
+      this.perm[i] = this.p[i & 255];
+      this.permMod12[i] = this.perm[i] % 12;
+    }
+
+  }
+  SimplexNoise.prototype = {
+    grad3: new Float32Array([1, 1, 0,
+      -1, 1, 0,
+      1, -1, 0,
+
+      -1, -1, 0,
+      1, 0, 1,
+      -1, 0, 1,
+
+      1, 0, -1,
+      -1, 0, -1,
+      0, 1, 1,
+
+      0, -1, 1,
+      0, 1, -1,
+      0, -1, -1]),
+    grad4: new Float32Array([0, 1, 1, 1, 0, 1, 1, -1, 0, 1, -1, 1, 0, 1, -1, -1,
+      0, -1, 1, 1, 0, -1, 1, -1, 0, -1, -1, 1, 0, -1, -1, -1,
+      1, 0, 1, 1, 1, 0, 1, -1, 1, 0, -1, 1, 1, 0, -1, -1,
+      -1, 0, 1, 1, -1, 0, 1, -1, -1, 0, -1, 1, -1, 0, -1, -1,
+      1, 1, 0, 1, 1, 1, 0, -1, 1, -1, 0, 1, 1, -1, 0, -1,
+      -1, 1, 0, 1, -1, 1, 0, -1, -1, -1, 0, 1, -1, -1, 0, -1,
+      1, 1, 1, 0, 1, 1, -1, 0, 1, -1, 1, 0, 1, -1, -1, 0,
+      -1, 1, 1, 0, -1, 1, -1, 0, -1, -1, 1, 0, -1, -1, -1, 0]),
+    noise2D: function(xin, yin) {
+      var permMod12 = this.permMod12;
+      var perm = this.perm;
+      var grad3 = this.grad3;
+      var n0 = 0; // Noise contributions from the three corners
+      var n1 = 0;
+      var n2 = 0;
+      // Skew the input space to determine which simplex cell we're in
+      var s = (xin + yin) * F2; // Hairy factor for 2D
+      var i = Math.floor(xin + s);
+      var j = Math.floor(yin + s);
+      var t = (i + j) * G2;
+      var X0 = i - t; // Unskew the cell origin back to (x,y) space
+      var Y0 = j - t;
+      var x0 = xin - X0; // The x,y distances from the cell origin
+      var y0 = yin - Y0;
+      // For the 2D case, the simplex shape is an equilateral triangle.
+      // Determine which simplex we are in.
+      var i1, j1; // Offsets for second (middle) corner of simplex in (i,j) coords
+      if (x0 > y0) {
+        i1 = 1;
+        j1 = 0;
+      } // lower triangle, XY order: (0,0)->(1,0)->(1,1)
+      else {
+        i1 = 0;
+        j1 = 1;
+      } // upper triangle, YX order: (0,0)->(0,1)->(1,1)
+      // A step of (1,0) in (i,j) means a step of (1-c,-c) in (x,y), and
+      // a step of (0,1) in (i,j) means a step of (-c,1-c) in (x,y), where
+      // c = (3-sqrt(3))/6
+      var x1 = x0 - i1 + G2; // Offsets for middle corner in (x,y) unskewed coords
+      var y1 = y0 - j1 + G2;
+      var x2 = x0 - 1.0 + 2.0 * G2; // Offsets for last corner in (x,y) unskewed coords
+      var y2 = y0 - 1.0 + 2.0 * G2;
+      // Work out the hashed gradient indices of the three simplex corners
+      var ii = i & 255;
+      var jj = j & 255;
+      // Calculate the contribution from the three corners
+      var t0 = 0.5 - x0 * x0 - y0 * y0;
+      if (t0 >= 0) {
+        var gi0 = permMod12[ii + perm[jj]] * 3;
+        t0 *= t0;
+        n0 = t0 * t0 * (grad3[gi0] * x0 + grad3[gi0 + 1] * y0); // (x,y) of grad3 used for 2D gradient
+      }
+      var t1 = 0.5 - x1 * x1 - y1 * y1;
+      if (t1 >= 0) {
+        var gi1 = permMod12[ii + i1 + perm[jj + j1]] * 3;
+        t1 *= t1;
+        n1 = t1 * t1 * (grad3[gi1] * x1 + grad3[gi1 + 1] * y1);
+      }
+      var t2 = 0.5 - x2 * x2 - y2 * y2;
+      if (t2 >= 0) {
+        var gi2 = permMod12[ii + 1 + perm[jj + 1]] * 3;
+        t2 *= t2;
+        n2 = t2 * t2 * (grad3[gi2] * x2 + grad3[gi2 + 1] * y2);
+      }
+      // Add contributions from each corner to get the final noise value.
+      // The result is scaled to return values in the interval [-1,1].
+      return 70.0 * (n0 + n1 + n2);
+    },
+    // 3D simplex noise
+    noise3D: function(xin, yin, zin) {
+      var permMod12 = this.permMod12;
+      var perm = this.perm;
+      var grad3 = this.grad3;
+      var n0, n1, n2, n3; // Noise contributions from the four corners
+      // Skew the input space to determine which simplex cell we're in
+      var s = (xin + yin + zin) * F3; // Very nice and simple skew factor for 3D
+      var i = Math.floor(xin + s);
+      var j = Math.floor(yin + s);
+      var k = Math.floor(zin + s);
+      var t = (i + j + k) * G3;
+      var X0 = i - t; // Unskew the cell origin back to (x,y,z) space
+      var Y0 = j - t;
+      var Z0 = k - t;
+      var x0 = xin - X0; // The x,y,z distances from the cell origin
+      var y0 = yin - Y0;
+      var z0 = zin - Z0;
+      // For the 3D case, the simplex shape is a slightly irregular tetrahedron.
+      // Determine which simplex we are in.
+      var i1, j1, k1; // Offsets for second corner of simplex in (i,j,k) coords
+      var i2, j2, k2; // Offsets for third corner of simplex in (i,j,k) coords
+      if (x0 >= y0) {
+        if (y0 >= z0) {
+          i1 = 1;
+          j1 = 0;
+          k1 = 0;
+          i2 = 1;
+          j2 = 1;
+          k2 = 0;
+        } // X Y Z order
+        else if (x0 >= z0) {
+          i1 = 1;
+          j1 = 0;
+          k1 = 0;
+          i2 = 1;
+          j2 = 0;
+          k2 = 1;
+        } // X Z Y order
+        else {
+          i1 = 0;
+          j1 = 0;
+          k1 = 1;
+          i2 = 1;
+          j2 = 0;
+          k2 = 1;
+        } // Z X Y order
+      }
+      else { // x0<y0
+        if (y0 < z0) {
+          i1 = 0;
+          j1 = 0;
+          k1 = 1;
+          i2 = 0;
+          j2 = 1;
+          k2 = 1;
+        } // Z Y X order
+        else if (x0 < z0) {
+          i1 = 0;
+          j1 = 1;
+          k1 = 0;
+          i2 = 0;
+          j2 = 1;
+          k2 = 1;
+        } // Y Z X order
+        else {
+          i1 = 0;
+          j1 = 1;
+          k1 = 0;
+          i2 = 1;
+          j2 = 1;
+          k2 = 0;
+        } // Y X Z order
+      }
+      // A step of (1,0,0) in (i,j,k) means a step of (1-c,-c,-c) in (x,y,z),
+      // a step of (0,1,0) in (i,j,k) means a step of (-c,1-c,-c) in (x,y,z), and
+      // a step of (0,0,1) in (i,j,k) means a step of (-c,-c,1-c) in (x,y,z), where
+      // c = 1/6.
+      var x1 = x0 - i1 + G3; // Offsets for second corner in (x,y,z) coords
+      var y1 = y0 - j1 + G3;
+      var z1 = z0 - k1 + G3;
+      var x2 = x0 - i2 + 2.0 * G3; // Offsets for third corner in (x,y,z) coords
+      var y2 = y0 - j2 + 2.0 * G3;
+      var z2 = z0 - k2 + 2.0 * G3;
+      var x3 = x0 - 1.0 + 3.0 * G3; // Offsets for last corner in (x,y,z) coords
+      var y3 = y0 - 1.0 + 3.0 * G3;
+      var z3 = z0 - 1.0 + 3.0 * G3;
+      // Work out the hashed gradient indices of the four simplex corners
+      var ii = i & 255;
+      var jj = j & 255;
+      var kk = k & 255;
+      // Calculate the contribution from the four corners
+      var t0 = 0.6 - x0 * x0 - y0 * y0 - z0 * z0;
+      if (t0 < 0) n0 = 0.0;
+      else {
+        var gi0 = permMod12[ii + perm[jj + perm[kk]]] * 3;
+        t0 *= t0;
+        n0 = t0 * t0 * (grad3[gi0] * x0 + grad3[gi0 + 1] * y0 + grad3[gi0 + 2] * z0);
+      }
+      var t1 = 0.6 - x1 * x1 - y1 * y1 - z1 * z1;
+      if (t1 < 0) n1 = 0.0;
+      else {
+        var gi1 = permMod12[ii + i1 + perm[jj + j1 + perm[kk + k1]]] * 3;
+        t1 *= t1;
+        n1 = t1 * t1 * (grad3[gi1] * x1 + grad3[gi1 + 1] * y1 + grad3[gi1 + 2] * z1);
+      }
+      var t2 = 0.6 - x2 * x2 - y2 * y2 - z2 * z2;
+      if (t2 < 0) n2 = 0.0;
+      else {
+        var gi2 = permMod12[ii + i2 + perm[jj + j2 + perm[kk + k2]]] * 3;
+        t2 *= t2;
+        n2 = t2 * t2 * (grad3[gi2] * x2 + grad3[gi2 + 1] * y2 + grad3[gi2 + 2] * z2);
+      }
+      var t3 = 0.6 - x3 * x3 - y3 * y3 - z3 * z3;
+      if (t3 < 0) n3 = 0.0;
+      else {
+        var gi3 = permMod12[ii + 1 + perm[jj + 1 + perm[kk + 1]]] * 3;
+        t3 *= t3;
+        n3 = t3 * t3 * (grad3[gi3] * x3 + grad3[gi3 + 1] * y3 + grad3[gi3 + 2] * z3);
+      }
+      // Add contributions from each corner to get the final noise value.
+      // The result is scaled to stay just inside [-1,1]
+      return 32.0 * (n0 + n1 + n2 + n3);
+    },
+    // 4D simplex noise, better simplex rank ordering method 2012-03-09
+    noise4D: function(x, y, z, w) {
+      var perm = this.perm;
+      var grad4 = this.grad4;
+
+      var n0, n1, n2, n3, n4; // Noise contributions from the five corners
+      // Skew the (x,y,z,w) space to determine which cell of 24 simplices we're in
+      var s = (x + y + z + w) * F4; // Factor for 4D skewing
+      var i = Math.floor(x + s);
+      var j = Math.floor(y + s);
+      var k = Math.floor(z + s);
+      var l = Math.floor(w + s);
+      var t = (i + j + k + l) * G4; // Factor for 4D unskewing
+      var X0 = i - t; // Unskew the cell origin back to (x,y,z,w) space
+      var Y0 = j - t;
+      var Z0 = k - t;
+      var W0 = l - t;
+      var x0 = x - X0; // The x,y,z,w distances from the cell origin
+      var y0 = y - Y0;
+      var z0 = z - Z0;
+      var w0 = w - W0;
+      // For the 4D case, the simplex is a 4D shape I won't even try to describe.
+      // To find out which of the 24 possible simplices we're in, we need to
+      // determine the magnitude ordering of x0, y0, z0 and w0.
+      // Six pair-wise comparisons are performed between each possible pair
+      // of the four coordinates, and the results are used to rank the numbers.
+      var rankx = 0;
+      var ranky = 0;
+      var rankz = 0;
+      var rankw = 0;
+      if (x0 > y0) rankx++;
+      else ranky++;
+      if (x0 > z0) rankx++;
+      else rankz++;
+      if (x0 > w0) rankx++;
+      else rankw++;
+      if (y0 > z0) ranky++;
+      else rankz++;
+      if (y0 > w0) ranky++;
+      else rankw++;
+      if (z0 > w0) rankz++;
+      else rankw++;
+      var i1, j1, k1, l1; // The integer offsets for the second simplex corner
+      var i2, j2, k2, l2; // The integer offsets for the third simplex corner
+      var i3, j3, k3, l3; // The integer offsets for the fourth simplex corner
+      // simplex[c] is a 4-vector with the numbers 0, 1, 2 and 3 in some order.
+      // Many values of c will never occur, since e.g. x>y>z>w makes x<z, y<w and x<w
+      // impossible. Only the 24 indices which have non-zero entries make any sense.
+      // We use a thresholding to set the coordinates in turn from the largest magnitude.
+      // Rank 3 denotes the largest coordinate.
+      i1 = rankx >= 3 ? 1 : 0;
+      j1 = ranky >= 3 ? 1 : 0;
+      k1 = rankz >= 3 ? 1 : 0;
+      l1 = rankw >= 3 ? 1 : 0;
+      // Rank 2 denotes the second largest coordinate.
+      i2 = rankx >= 2 ? 1 : 0;
+      j2 = ranky >= 2 ? 1 : 0;
+      k2 = rankz >= 2 ? 1 : 0;
+      l2 = rankw >= 2 ? 1 : 0;
+      // Rank 1 denotes the second smallest coordinate.
+      i3 = rankx >= 1 ? 1 : 0;
+      j3 = ranky >= 1 ? 1 : 0;
+      k3 = rankz >= 1 ? 1 : 0;
+      l3 = rankw >= 1 ? 1 : 0;
+      // The fifth corner has all coordinate offsets = 1, so no need to compute that.
+      var x1 = x0 - i1 + G4; // Offsets for second corner in (x,y,z,w) coords
+      var y1 = y0 - j1 + G4;
+      var z1 = z0 - k1 + G4;
+      var w1 = w0 - l1 + G4;
+      var x2 = x0 - i2 + 2.0 * G4; // Offsets for third corner in (x,y,z,w) coords
+      var y2 = y0 - j2 + 2.0 * G4;
+      var z2 = z0 - k2 + 2.0 * G4;
+      var w2 = w0 - l2 + 2.0 * G4;
+      var x3 = x0 - i3 + 3.0 * G4; // Offsets for fourth corner in (x,y,z,w) coords
+      var y3 = y0 - j3 + 3.0 * G4;
+      var z3 = z0 - k3 + 3.0 * G4;
+      var w3 = w0 - l3 + 3.0 * G4;
+      var x4 = x0 - 1.0 + 4.0 * G4; // Offsets for last corner in (x,y,z,w) coords
+      var y4 = y0 - 1.0 + 4.0 * G4;
+      var z4 = z0 - 1.0 + 4.0 * G4;
+      var w4 = w0 - 1.0 + 4.0 * G4;
+      // Work out the hashed gradient indices of the five simplex corners
+      var ii = i & 255;
+      var jj = j & 255;
+      var kk = k & 255;
+      var ll = l & 255;
+      // Calculate the contribution from the five corners
+      var t0 = 0.6 - x0 * x0 - y0 * y0 - z0 * z0 - w0 * w0;
+      if (t0 < 0) n0 = 0.0;
+      else {
+        var gi0 = (perm[ii + perm[jj + perm[kk + perm[ll]]]] % 32) * 4;
+        t0 *= t0;
+        n0 = t0 * t0 * (grad4[gi0] * x0 + grad4[gi0 + 1] * y0 + grad4[gi0 + 2] * z0 + grad4[gi0 + 3] * w0);
+      }
+      var t1 = 0.6 - x1 * x1 - y1 * y1 - z1 * z1 - w1 * w1;
+      if (t1 < 0) n1 = 0.0;
+      else {
+        var gi1 = (perm[ii + i1 + perm[jj + j1 + perm[kk + k1 + perm[ll + l1]]]] % 32) * 4;
+        t1 *= t1;
+        n1 = t1 * t1 * (grad4[gi1] * x1 + grad4[gi1 + 1] * y1 + grad4[gi1 + 2] * z1 + grad4[gi1 + 3] * w1);
+      }
+      var t2 = 0.6 - x2 * x2 - y2 * y2 - z2 * z2 - w2 * w2;
+      if (t2 < 0) n2 = 0.0;
+      else {
+        var gi2 = (perm[ii + i2 + perm[jj + j2 + perm[kk + k2 + perm[ll + l2]]]] % 32) * 4;
+        t2 *= t2;
+        n2 = t2 * t2 * (grad4[gi2] * x2 + grad4[gi2 + 1] * y2 + grad4[gi2 + 2] * z2 + grad4[gi2 + 3] * w2);
+      }
+      var t3 = 0.6 - x3 * x3 - y3 * y3 - z3 * z3 - w3 * w3;
+      if (t3 < 0) n3 = 0.0;
+      else {
+        var gi3 = (perm[ii + i3 + perm[jj + j3 + perm[kk + k3 + perm[ll + l3]]]] % 32) * 4;
+        t3 *= t3;
+        n3 = t3 * t3 * (grad4[gi3] * x3 + grad4[gi3 + 1] * y3 + grad4[gi3 + 2] * z3 + grad4[gi3 + 3] * w3);
+      }
+      var t4 = 0.6 - x4 * x4 - y4 * y4 - z4 * z4 - w4 * w4;
+      if (t4 < 0) n4 = 0.0;
+      else {
+        var gi4 = (perm[ii + 1 + perm[jj + 1 + perm[kk + 1 + perm[ll + 1]]]] % 32) * 4;
+        t4 *= t4;
+        n4 = t4 * t4 * (grad4[gi4] * x4 + grad4[gi4 + 1] * y4 + grad4[gi4 + 2] * z4 + grad4[gi4 + 3] * w4);
+      }
+      // Sum up and scale the result to cover the range [-1,1]
+      return 27.0 * (n0 + n1 + n2 + n3 + n4);
+    }
+  };
+
+  function buildPermutationTable(random) {
+    var i;
+    var p = new Uint8Array(256);
+    for (i = 0; i < 256; i++) {
+      p[i] = i;
+    }
+    for (i = 0; i < 255; i++) {
+      var r = i + ~~(random() * (256 - i));
+      var aux = p[i];
+      p[i] = p[r];
+      p[r] = aux;
+    }
+    return p;
+  }
+  SimplexNoise._buildPermutationTable = buildPermutationTable;
+
+  function alea() {
+    // Johannes Baagøe <baagoe@baagoe.com>, 2010
+    var s0 = 0;
+    var s1 = 0;
+    var s2 = 0;
+    var c = 1;
+
+    var mash = masher();
+    s0 = mash(' ');
+    s1 = mash(' ');
+    s2 = mash(' ');
+
+    for (var i = 0; i < arguments.length; i++) {
+      s0 -= mash(arguments[i]);
+      if (s0 < 0) {
+        s0 += 1;
+      }
+      s1 -= mash(arguments[i]);
+      if (s1 < 0) {
+        s1 += 1;
+      }
+      s2 -= mash(arguments[i]);
+      if (s2 < 0) {
+        s2 += 1;
+      }
+    }
+    mash = null;
+    return function() {
+      var t = 2091639 * s0 + c * 2.3283064365386963e-10; // 2^-32
+      s0 = s1;
+      s1 = s2;
+      return s2 = t - (c = t | 0);
+    };
+  }
+  function masher() {
+    var n = 0xefc8249d;
+    return function(data) {
+      data = data.toString();
+      for (var i = 0; i < data.length; i++) {
+        n += data.charCodeAt(i);
+        var h = 0.02519603282416938 * n;
+        n = h >>> 0;
+        h -= n;
+        h *= n;
+        n = h >>> 0;
+        h -= n;
+        n += h * 0x100000000; // 2^32
+      }
+      return (n >>> 0) * 2.3283064365386963e-10; // 2^-32
+    };
+  }
+
+  // amd
+  if (true) !(__WEBPACK_AMD_DEFINE_RESULT__ = (function() {return SimplexNoise;}).call(exports, __webpack_require__, exports, module),
+				__WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
+  // common js
+  if (true) exports.SimplexNoise = SimplexNoise;
+  // browser
+  else {}
+  // nodejs
+  if (true) {
+    module.exports = SimplexNoise;
+  }
+
+})();
+
 
 /***/ }),
 
@@ -39622,10 +40536,10 @@ __webpack_require__.r(__webpack_exports__);
 var Boid = function () {
 
     var vector = new claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"](),
-    _acceleration, _width = 500, _height = 500, _depth = 200, _goal, _neighborhoodRadius = 100,
-    _maxSpeed = 4, _maxSteerForce = 0.1, _avoidWalls = false,
+    _acceleration, _width = 500, _height = 500, _depth = 200, _goal, _neighborhoodRadius = 50,
+    _maxSpeed = 0.5, _maxSteerForce = 0.2, _avoidWalls = false,
 
-    _goalIntensity = 0.005;
+    _goalIntensity = 0.001;
 
     this.position = new claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"]();
     this.velocity = new claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"]();
@@ -39900,7 +40814,7 @@ var Boid = function () {
                 claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].sub(repulse, this.position, boid.position);
 
                 claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].normalize(repulse, repulse);
-                claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].scale(repulse, repulse, 1 / distance);
+                claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].scale(repulse, repulse, 0.5 / distance);
                 claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].add(posSum, posSum, repulse);
 
             }
@@ -39935,7 +40849,7 @@ __webpack_require__.r(__webpack_exports__);
 
 
 const fishIds = ['01', '02', '05', '07', '12'];
-
+const FISH_SCALE = 0.01;
 class Fishes {
     constructor(shader, cb) {
         this._rootNode = new claygl__WEBPACK_IMPORTED_MODULE_0__["Node"]();
@@ -39948,27 +40862,28 @@ class Fishes {
             });
         })).then(results => {
             results.forEach(function (result, idx) {
-                const normalMap = new claygl__WEBPACK_IMPORTED_MODULE_0__["Texture2D"]({
-                    anisotropic: 32
-                });
-                normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
+                // const normalMap = new Texture2D({
+                //     anisotropic: 32
+                // });
+                // normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
                 result.rootNode.traverse(function (mesh) {
                     if (mesh.material) {
-                        mesh.geometry.generateTangents();
-                        mesh.material.set({
-                            roughness: 0.8
-                        });
-                        mesh.material.get('diffuseMap').anisotropic = 8;
-                        mesh.material.normalMap = normalMap;
+                        // mesh.geometry.generateTangents();
+                        // mesh.material.set({
+                        //     roughness: 0.2
+                        // });
+                        // mesh.material.get('diffuseMap').anisotropic = 8;
+                        // mesh.material.normalMap = normalMap;
+                        // console.log(JSON.stringify(mesh.geometry.attributes.texcoord0.value));
                     }
                     if (fishIds[idx] === '15') {
                         mesh.rotation.rotateY(Math.PI / 2);
                     }
                 });
             });
-            for (let i = 0; i < 500; i++) {
+            for (let i = 0; i < 200; i++) {
                 const boid = new _Boid__WEBPACK_IMPORTED_MODULE_2__["default"]();
-                boid.velocity.x = Math.random() * 0.2 - 0.1;
+                boid.velocity.x = Math.random() * 2 - 1;
                 boid.velocity.y = Math.random() * 0.2 - 0.1;
                 boid.velocity.z = Math.random() * 2 - 1;
                 boid.setAvoidWalls(false);
@@ -39978,7 +40893,7 @@ class Fishes {
                 const randomFish = results[Math.round(Math.random() * (results.length - 1))];
                 const fishClone = randomFish.rootNode.clone();
 
-                fishClone.scale.set(0.01, 0.01, 0.01);
+                fishClone.scale.set(FISH_SCALE, FISH_SCALE, FISH_SCALE);
 
                 this._rootNode.add(fishClone);
                 this._boids.push(boid);
@@ -39993,9 +40908,9 @@ class Fishes {
 
     randomPositionInBox(box) {
         this._boids.forEach(boid => {
-            boid.position.x = Math.random() * (box.max.x - box.min.x) + box.min.x;
-            boid.position.y = Math.random() * (box.max.y - box.min.y) + box.min.y - this._rootNode.position.y;
-            boid.position.z = Math.random() * (box.max.z - box.min.z) + box.min.z;
+            boid.position.x = (Math.random() - 0.5) * 0.4 * (box.max.x - box.min.x);
+            boid.position.y = (Math.random() - 0.5) * 0.4 * (box.max.y - box.min.y);
+            boid.position.z = (Math.random() - 0.5) * 0.4 * (box.max.z - box.min.z);
         }, this);
     }
 
@@ -40006,7 +40921,7 @@ class Fishes {
 
         if (width && height && depth) {
             this._boids.forEach(boid => {
-                boid.setWorldSize(width, height, depth);
+                boid.setWorldSize(width / 2, height / 2, depth / 2);
                 boid.setAvoidWalls(true);
             });
         }
@@ -40017,32 +40932,30 @@ class Fishes {
         }
 
         // PENDING
-        this._rootNode.position.y = height + box.min.y;
+        this._rootNode.position.y = -box.min.y + height / 2;
     }
 
     update(dTime) {
         const boids = this._boids;
-        const z = new claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"](0, 0, 1);
-        const dir = new claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"]();
+        const up = claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].UP;
+        const target = new claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"]();
         for (let i = 0; i < boids.length; i++) {
             const boid = boids[i];
             boid.run(boids);
 
             const fish = this._rootNode.childAt(i);
-            claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].normalize(dir, boid.velocity);
-            if (dir.len() > 0.01) {
-                fish.rotation.rotationTo(z, dir);
+            if (boid.velocity.squaredLength() > 0.01) {
+                claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].sub(target, fish.position, boid.velocity);
+                fish.lookAt(target, up);
+                fish.scale.set(FISH_SCALE, FISH_SCALE, FISH_SCALE);
             }
-            // fish.rotation.identity();
-            // fish.rotation.rotateY(Math.atan2(-boid.velocity.z, boid.velocity.x));
-            // fish.rotation.rotateX(Math.asin(boid.velocity.y / boid.velocity.len()));
             fish.position.copy(boid.position);
         }
     }
 
     goTo(position, radius) {
         const boids = this._boids;
-        for (const i = 0; i < boids.length; i++) {
+        for (let i = 0; i < boids.length; i++) {
             const boid = boids[i];
             const goal = boid.__goal || (boid.__goal = new claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"]());
             goal.copy(position);
@@ -40062,7 +40975,212 @@ class Fishes {
             boid.setGoalIntensity(0.02);
         }
     }
+
+    getCenter() {
+        const boids = this._boids;
+        const center = new claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"]();
+
+        if (boids.length > 0) {
+            for (let i = 0; i < boids.length; i++) {
+                claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].add(center, center, boids[i].position);
+            }
+            claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].scale(center, center, 1 / boids.length);
+            claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].add(center, center, this._rootNode.position);
+
+            return center;
+        }
+    }
 }
+
+/***/ }),
+
+/***/ "./src/Grass.js":
+/*!**********************!*\
+  !*** ./src/Grass.js ***!
+  \**********************/
+/*! exports provided: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "default", function() { return Grass; });
+/* harmony import */ var claygl__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! claygl */ "../../claygl/src/claygl.js");
+/* harmony import */ var simplex_noise__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! simplex-noise */ "./node_modules/simplex-noise/simplex-noise.js");
+/* harmony import */ var simplex_noise__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(simplex_noise__WEBPACK_IMPORTED_MODULE_1__);
+/* harmony import */ var _grass_glsl__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./grass.glsl */ "./src/grass.glsl");
+// https://github.com/spacejack/terra
+
+
+
+
+
+
+claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"].import(_grass_glsl__WEBPACK_IMPORTED_MODULE_2__["default"]);
+
+const BLADE_SEGS = 4; // # of blade segments
+const BLADE_VERTS = (BLADE_SEGS + 1) * 2; // # of vertices per blade (1 side)
+const BLADE_INDICES = BLADE_SEGS * 12;
+const BLADE_WIDTH = 1;
+const BLADE_HEIGHT_MIN = 50;
+const BLADE_HEIGHT_MAX = 200.0;
+
+/**
+ * Sets up indices for single blade mesh.
+ * @param id array of indices
+ * @param vc1 vertex start offset for front side of blade
+ * @param vc2 vertex start offset for back side of blade
+ * @param i index offset
+ */
+function initBladeIndices(id, numBlades) {
+    let n = 0;
+    let vtx = 0;
+    for (let k = 0; k < numBlades; k++) {
+        let seg;
+        // blade front side
+        for (seg = 0; seg < BLADE_SEGS; ++seg) {
+            id[n++] = vtx + 0; // tri 1
+            id[n++] = vtx + 1;
+            id[n++] = vtx + 2;
+            id[n++] = vtx + 2; // tri 2
+            id[n++] = vtx + 1;
+            id[n++] = vtx + 3;
+        }
+        // blade back side
+        for (seg = 0; seg < BLADE_SEGS; ++seg) {
+            id[n++] = vtx + 2; // tri 1
+            id[n++] = vtx + 1;
+            id[n++] = vtx + 0;
+            id[n++] = vtx + 3; // tri 2
+            id[n++] = vtx + 1;
+            id[n++] = vtx + 2;
+        }
+
+        vtx += BLADE_VERTS;
+    }
+}
+
+/** Set up shape variations for each blade of grass */
+function initBladeShapeVerts(shape, numBlades, offset) {
+    const simplex = new simplex_noise__WEBPACK_IMPORTED_MODULE_1___default.a();
+    let noise = 0;
+    let n = 0;
+    for (let i = 0; i < numBlades; ++i) {
+        noise = Math.abs(simplex.noise2D(offset[i*4+0] * 0.03, offset[i*4+1] * 0.03));
+        noise = noise * noise * noise;
+        noise *= 5.0;
+        const width = BLADE_WIDTH + Math.random() * BLADE_WIDTH * 0.5;
+        const height = BLADE_HEIGHT_MIN + Math.pow(Math.random(), 4.0) * (BLADE_HEIGHT_MAX - BLADE_HEIGHT_MIN) + noise;
+        const lean = Math.random() * 0.3;
+        const curve = 0.05 + Math.random() * 0.3;
+        for (let k = 0; k < BLADE_VERTS; k++) {
+            shape[n++] = width;
+            shape[n++] = height;
+            shape[n++] = lean;
+            shape[n++] = curve;
+        }
+    }
+}
+
+/** Set up positons & rotation for each blade of grass */
+function initBladeOffsetVerts(offset, numBlades, patchRadius) {
+    let n = 0;
+    for (let i = 0; i < numBlades; ++i) {
+        const x = (Math.random() * 2 - 1) * patchRadius;
+        const y = (Math.random() * 2 - 1) * patchRadius;;
+        const rot = Math.PI * 2.0 * Math.random();
+        for (let k = 0; k < BLADE_VERTS; k++) {
+            offset[n++] = x;
+            offset[n++] = y;
+            offset[n++] = 0;
+            offset[n++] = rot;
+        }
+    }
+}
+
+/** Set up indices for 1 blade */
+function initBladeIndexVerts(vindex, numBlades) {
+    let n = 0;
+    for (let k = 0; k < numBlades; k++) {
+        for (let i = 0; i < BLADE_VERTS; ++i) {
+            vindex[n++] = i;
+        }
+    }
+}
+class Grass {
+    constructor(opts = {}) {
+        const numBlades = opts.numBlades || 6e3;
+        const windIntensity = opts.windIntensity || 1.5;
+        const radius = this._radius = opts.radius || 200;
+
+        const mesh = this._mesh = new claygl__WEBPACK_IMPORTED_MODULE_0__["Mesh"]({
+            castShadow: false,
+            geometry: new claygl__WEBPACK_IMPORTED_MODULE_0__["Geometry"]({
+                attributes: {
+                    vindex: new claygl__WEBPACK_IMPORTED_MODULE_0__["Geometry"].Attribute('vindex', 'float', 1),
+                    offset: new claygl__WEBPACK_IMPORTED_MODULE_0__["Geometry"].Attribute('offset', 'float', 4),
+                    shape: new claygl__WEBPACK_IMPORTED_MODULE_0__["Geometry"].Attribute('shape', 'float', 4)
+                }
+            }),
+            material: new claygl__WEBPACK_IMPORTED_MODULE_0__["Material"]({
+                shader: new claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"](
+                    claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"].source('grass.vertex'),
+                    claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"].source('caustics.fragment')
+                )
+            })
+        });
+        const geo = mesh.geometry;
+        geo.attributes.offset.init(numBlades * BLADE_VERTS);
+        geo.attributes.shape.init(numBlades * BLADE_VERTS);
+        geo.attributes.vindex.init(numBlades * BLADE_VERTS);
+        geo.indices = new Uint16Array(BLADE_INDICES * numBlades);
+
+        initBladeIndices(geo.indices, numBlades);
+        initBladeOffsetVerts(geo.attributes.offset.value, numBlades, radius);
+        initBladeShapeVerts(geo.attributes.shape.value, numBlades, geo.attributes.offset.value);
+        initBladeIndexVerts(geo.attributes.vindex.value, numBlades);
+
+        const mat = mesh.material;
+        mat.set('windIntensity', windIntensity);
+        mat.set('heightMapScale', [1, 1, 4]);   // TODO
+        mat.set('color', [0.45 * 3, 0.46 * 3, 0.19 * 3]);
+
+        mat.define('vertex', 'PATCH_SIZE', radius * 2);
+        mat.define('vertex', 'BLADE_SEGS', BLADE_SEGS);
+        mat.define('vertex', 'TRANSITION_LOW', opts.transitionLow || 0.31);
+        mat.define('vertex', 'TRANSITION_HIGH', opts.transitionHigh || 0.36);
+        mat.define('vertex', 'BLADE_HEIGHT_TALL', BLADE_HEIGHT_MAX);
+        mat.define('vertex', 'BLADE_DIVS', BLADE_SEGS + 1);
+        mat.define('vertex', 'BLADE_VERTS', (BLADE_SEGS + 1) * 2);
+
+        mat.define('VERTEX_COLOR');
+
+        const heightMap = new claygl__WEBPACK_IMPORTED_MODULE_0__["Texture2D"]();
+        heightMap.load('asset/texture/terrain.jpg');
+        const diffuseMap = new claygl__WEBPACK_IMPORTED_MODULE_0__["Texture2D"]();
+        diffuseMap.load('asset/texture/grass.jpg');
+        mat.set('diffuseMap', diffuseMap);
+        mat.set('heightMap', heightMap);
+
+        this._elapsedTime = 0;
+    }
+
+    getMesh() {
+        return this._mesh;
+    }
+
+    update(time, camera) {
+        this._elapsedTime += time;
+        const mesh = this._mesh;
+        const mat = mesh.material;
+        const forward = camera.worldTransform.z.clone().normalize().negate();
+        mat.set('time', this._elapsedTime / 1000);
+        const drawPos = camera.position.clone().scaleAndAdd(forward, this._radius);
+        mat.set(
+            'drawPos',
+            [drawPos.x, drawPos.z]
+        );
+    }
+};
 
 /***/ }),
 
@@ -40096,7 +41214,7 @@ const fs = typeof swan !== 'undefined'
             filePath: path,
             encoding: isBinary ? null : 'utf-8',
             success(res) {
-                const data = res.data;
+                let data = res.data;
                 if (isBinary) {
                     self.parseBinary(data);
                 }
@@ -40147,15 +41265,15 @@ class Terrain {
         var sandTexture = new claygl__WEBPACK_IMPORTED_MODULE_0__["Texture2D"]({
             anisotropic: 8
         });
-        var sandNormalTexture = new claygl__WEBPACK_IMPORTED_MODULE_0__["Texture2D"]({
-            anisotropic: 8
-        });
+        // var sandNormalTexture = new Texture2D({
+        //     anisotropic: 8
+        // });
         sandTexture.load('asset/texture/sand.jpg');
-        sandNormalTexture.load('asset/texture/sand_NRM.png');
+        // sandNormalTexture.load('asset/texture/sand_NRM.jpg');
         var plane = new claygl__WEBPACK_IMPORTED_MODULE_0__["Mesh"]({
             geometry: new claygl__WEBPACK_IMPORTED_MODULE_0__["geometry"].Plane({
-                widthSegments: 100,
-                heightSegments: 100,
+                widthSegments: 10,
+                heightSegments: 10,
                 // Must mark as dynamic
                 dynamic: true
             }),
@@ -40166,7 +41284,7 @@ class Terrain {
         });
         plane.material.set({
             diffuseMap: sandTexture,
-            normalMap: sandNormalTexture,
+            // normalMap: sandNormalTexture,
             uvRepeat: [20, 20],
             roughness: 1
         });
@@ -40191,11 +41309,11 @@ class Terrain {
 
             self.updateHeightmap();
         };
-        img.src = 'asset/texture/terrain.png';
+        img.src = 'asset/texture/terrain.jpg';
     }
 
     updateHeightmap(opts = {}) {
-        const maxHeight = opts.maxHeight == null ? 10 : opts.maxHeight;
+        const maxHeight = opts.maxHeight == null ? 5 : opts.maxHeight;
         const heightData = this._heightData;
         if (!heightData) {
             return;
@@ -40218,7 +41336,8 @@ class Terrain {
 
             const idx = (y * width + x) * 4;
             const r = heightData[idx];
-            pos[2] = ((r / 255 - 0.5) * 4 + 0.5) * maxHeight;
+            // pos[2] = ((r / 255 - 0.5) * 4 + 0.5) * maxHeight
+            pos[2] = 0;
 
             positions.set(i, pos);
         }
@@ -40232,6 +41351,781 @@ class Terrain {
     }
 }
 
+
+/***/ }),
+
+/***/ "./src/caustics.glsl":
+/*!***************************!*\
+  !*** ./src/caustics.glsl ***!
+  \***************************/
+/*! exports provided: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony default export */ __webpack_exports__["default"] = (`
+// http://blog.selfshadow.com/publications/s2013-shading-course/
+
+@export caustics.vertex
+
+@import clay.standard.vertex
+
+@end
+
+
+@export caustics.fragment
+
+#define PI 3.14159265358979
+#define LOG2 1.442695
+
+#define GLOSSINESS_CHANNEL 0
+#define ROUGHNESS_CHANNEL 0
+#define METALNESS_CHANNEL 1
+
+#define DIFFUSEMAP_ALPHA_ALPHA
+
+
+@import clay.standard.chunk.varying
+
+uniform mat4 viewInverse : VIEWINVERSE;
+
+#ifdef NORMALMAP_ENABLED
+uniform sampler2D normalMap;
+#endif
+
+// Scalar multiplier applied to each normal vector of normal texture.
+uniform float normalScale: 1.0;
+
+#ifdef DIFFUSEMAP_ENABLED
+uniform sampler2D diffuseMap;
+#endif
+
+#ifdef SPECULARMAP_ENABLED
+uniform sampler2D specularMap;
+#endif
+
+#ifdef USE_ROUGHNESS
+uniform float roughness : 0.5;
+    #ifdef ROUGHNESSMAP_ENABLED
+uniform sampler2D roughnessMap;
+    #endif
+#else
+uniform float glossiness: 0.5;
+    #ifdef GLOSSINESSMAP_ENABLED
+uniform sampler2D glossinessMap;
+    #endif
+#endif
+
+#ifdef METALNESSMAP_ENABLED
+uniform sampler2D metalnessMap;
+#endif
+
+#ifdef OCCLUSIONMAP_ENABLED
+uniform sampler2D occlusionMap;
+#endif
+
+#ifdef ENVIRONMENTMAP_ENABLED
+uniform samplerCube environmentMap;
+
+// https://seblagarde.wordpress.com/2012/09/29/image-based-lighting-approaches-and-parallax-corrected-cubemap/
+    #ifdef PARALLAX_CORRECTED
+uniform vec3 environmentBoxMin;
+uniform vec3 environmentBoxMax;
+    #endif
+
+#endif
+
+#ifdef BRDFLOOKUP_ENABLED
+uniform sampler2D brdfLookup;
+#endif
+
+#ifdef EMISSIVEMAP_ENABLED
+uniform sampler2D emissiveMap;
+#endif
+
+#ifdef SSAOMAP_ENABLED
+// For ssao prepass
+uniform sampler2D ssaoMap;
+uniform vec4 viewport : VIEWPORT;
+#endif
+
+#ifdef AOMAP_ENABLED
+uniform sampler2D aoMap;
+uniform float aoIntensity;
+#endif
+
+uniform vec3 color : [1.0, 1.0, 1.0];
+uniform float alpha : 1.0;
+
+#ifdef ALPHA_TEST
+uniform float alphaCutoff: 0.9;
+#endif
+
+#ifdef USE_METALNESS
+// metalness workflow
+uniform float metalness : 0.0;
+#else
+// specular workflow
+uniform vec3 specularColor : [0.1, 0.1, 0.1];
+#endif
+
+uniform vec3 emission : [0.0, 0.0, 0.0];
+
+uniform float emissionIntensity: 1;
+
+// Uniforms for wireframe
+uniform float lineWidth : 0.0;
+uniform vec4 lineColor : [0.0, 0.0, 0.0, 0.6];
+
+// Max mipmap level of environment map
+#ifdef ENVIRONMENTMAP_PREFILTER
+uniform float maxMipmapLevel: 5;
+#endif
+
+// Caustics uniforms
+uniform mat4 lightViewMatrix;
+
+uniform sampler2D causticsTexture;
+uniform float causticsIntensity : 1.0;
+uniform float causticsScale : 4;
+
+uniform float elapsedTime: 0;
+
+// Fog uniforms
+// from 0.0 to 1.0
+uniform float fogDensity = 0.2;
+uniform vec3 fogColor0 = vec3(0.3, 0.3, 0.3);
+uniform vec3 fogColor1 = vec3(0.1, 0.1, 0.1);
+
+uniform vec3 sceneColor = vec3(1, 1, 1);
+// TODO
+uniform float fogRange = 4.0;
+
+@import clay.standard.chunk.light_header
+
+// Import util functions and uniforms needed
+@import clay.util.calculate_attenuation
+
+@import clay.util.edge_factor
+
+@import clay.util.rgbm
+
+@import clay.util.srgb
+
+@import clay.plugin.compute_shadow_map
+
+@import clay.util.parallax_correct
+
+@import clay.util.ACES
+
+// Motion_4WayChaos from Unreal Engine
+// https://www.youtube.com/watch?v=W8u7GONZzoY 16:57
+vec4 Motion_4WayChaos(sampler2D inputTexture, vec2 coord, float speed) {
+    vec4 tex1 = texture2D(inputTexture, coord + speed * vec2(0.1, 0.1) * elapsedTime);
+    vec4 tex2 = texture2D(inputTexture, coord + vec2(0.418, 0.355) + speed * vec2(-0.1, 0.1) * elapsedTime);
+    vec4 tex3 = texture2D(inputTexture, coord + vec2(0.865, 0.148) + speed * vec2(0.1, -0.1) * elapsedTime);
+    vec4 tex4 = texture2D(inputTexture, coord + vec2(0.651, 0.752) + speed * vec2(-0.1, -0.1) * elapsedTime);
+
+    return (tex1 + tex2 + tex3 + tex4) * 0.3;
+}
+
+float G_Smith(float g, float ndv, float ndl)
+{
+    // float k = (roughness+1.0) * (roughness+1.0) * 0.125;
+    float roughness = 1.0 - g;
+    float k = roughness * roughness / 2.0;
+    float G1V = ndv / (ndv * (1.0 - k) + k);
+    float G1L = ndl / (ndl * (1.0 - k) + k);
+    return G1L * G1V;
+}
+// Fresnel
+vec3 F_Schlick(float ndv, vec3 spec) {
+    return spec + (1.0 - spec) * pow(1.0 - ndv, 5.0);
+}
+
+float D_Phong(float g, float ndh) {
+    // from black ops 2
+    float a = pow(8192.0, g);
+    return (a + 2.0) / 8.0 * pow(ndh, a);
+}
+
+float D_GGX(float g, float ndh) {
+    float r = 1.0 - g;
+    float a = r * r;
+    float tmp = ndh * ndh * (a - 1.0) + 1.0;
+    return a / (PI * tmp * tmp);
+}
+
+#ifdef PARALLAXOCCLUSIONMAP_ENABLED
+uniform float parallaxOcclusionScale : 0.02;
+uniform float parallaxMaxLayers : 20;
+uniform float parallaxMinLayers : 5;
+uniform sampler2D parallaxOcclusionMap;
+
+mat3 transpose(in mat3 inMat)
+{
+    vec3 i0 = inMat[0];
+    vec3 i1 = inMat[1];
+    vec3 i2 = inMat[2];
+
+    return mat3(
+        vec3(i0.x, i1.x, i2.x),
+        vec3(i0.y, i1.y, i2.y),
+        vec3(i0.z, i1.z, i2.z)
+    );
+}
+// Modified from http://apoorvaj.io/exploring-bump-mapping-with-webgl.html
+vec2 parallaxUv(vec2 uv, vec3 viewDir)
+{
+    // Determine number of layers from angle between V and N
+    float numLayers = mix(parallaxMaxLayers, parallaxMinLayers, abs(dot(vec3(0.0, 0.0, 1.0), viewDir)));
+    float layerHeight = 1.0 / numLayers;
+    float curLayerHeight = 0.0;
+    vec2 deltaUv = viewDir.xy * parallaxOcclusionScale / (viewDir.z * numLayers);
+    vec2 curUv = uv;
+
+    float height = 1.0 - texture2D(parallaxOcclusionMap, curUv).r;
+
+    for (int i = 0; i < 30; i++) {
+        curLayerHeight += layerHeight;
+        curUv -= deltaUv;
+        height = 1.0 - texture2D(parallaxOcclusionMap, curUv).r;
+        if (height < curLayerHeight) {
+            break;
+        }
+    }
+
+    // Parallax occlusion mapping
+    vec2 prevUv = curUv + deltaUv;
+    float next = height - curLayerHeight;
+    float prev = 1.0 - texture2D(parallaxOcclusionMap, prevUv).r - curLayerHeight + layerHeight;
+    return mix(curUv, prevUv, next / (next - prev));
+}
+#endif
+
+void main() {
+
+    vec4 albedoColor = vec4(color, alpha);
+
+#ifdef VERTEX_COLOR
+    albedoColor *= v_Color;
+#endif
+
+#ifdef SRGB_DECODE
+    albedoColor = sRGBToLinear(albedoColor);
+#endif
+
+    vec3 eyePos = viewInverse[3].xyz;
+    vec3 V = normalize(eyePos - v_WorldPosition);
+
+    vec4 positionInLightSpace = lightViewMatrix * vec4(v_WorldPosition, 1.0);
+    positionInLightSpace.xyz /= positionInLightSpace.w;
+    vec2 causticsUv = positionInLightSpace.xz;
+    causticsUv *= 1.0 / 64.0 / causticsScale;
+    causticsUv += elapsedTime * 0.02;
+
+    vec3 causticsAffector = Motion_4WayChaos(causticsTexture, causticsUv, 0.5).rgb
+        * causticsIntensity;
+
+    vec2 uv = v_Texcoord;
+
+#if defined(PARALLAXOCCLUSIONMAP_ENABLED) || defined(NORMALMAP_ENABLED)
+    mat3 tbn = mat3(v_Tangent, v_Bitangent, v_Normal);
+#endif
+
+#ifdef PARALLAXOCCLUSIONMAP_ENABLED
+    uv = parallaxUv(v_Texcoord, normalize(transpose(tbn) * -V));
+#endif
+#ifdef DIFFUSEMAP_ENABLED
+    vec4 texel = texture2D(diffuseMap, uv);
+    #ifdef SRGB_DECODE
+    texel = sRGBToLinear(texel);
+    #endif
+    albedoColor.rgb *= texel.rgb;
+    #ifdef DIFFUSEMAP_ALPHA_ALPHA
+    albedoColor.a *= texel.a;
+    #endif
+
+#endif
+
+
+#ifdef USE_METALNESS
+    float m = metalness;
+
+    #ifdef METALNESSMAP_ENABLED
+    float m2 = texture2D(metalnessMap, uv)[METALNESS_CHANNEL];
+    // Adjust the brightness
+    m = clamp(m2 + (m - 0.5) * 2.0, 0.0, 1.0);
+    #endif
+
+    vec3 baseColor = albedoColor.rgb;
+    albedoColor.rgb = baseColor * (1.0 - m);
+    vec3 spec = mix(vec3(0.04), baseColor, m);
+#else
+    vec3 spec = specularColor;
+#endif
+
+#ifdef USE_ROUGHNESS
+    float g = clamp(1.0 - roughness, 0.0, 1.0);
+    #ifdef ROUGHNESSMAP_ENABLED
+    float g2 = 1.0 - texture2D(roughnessMap, uv)[ROUGHNESS_CHANNEL];
+    // Adjust the brightness
+    g = clamp(g2 + (g - 0.5) * 2.0, 0.0, 1.0);
+    #endif
+#else
+    float g = glossiness;
+    #ifdef GLOSSINESSMAP_ENABLED
+    float g2 = texture2D(glossinessMap, uv)[GLOSSINESS_CHANNEL];
+    // Adjust the brightness
+    g = clamp(g2 + (g - 0.5) * 2.0, 0.0, 1.0);
+    #endif
+#endif
+
+#ifdef SPECULARMAP_ENABLED
+    // Convert to linear space.
+    spec *= sRGBToLinear(texture2D(specularMap, uv)).rgb;
+#endif
+
+    vec3 N = v_Normal;
+
+#ifdef DOUBLE_SIDED
+    if (dot(N, V) < 0.0) {
+        N = -N;
+    }
+#endif
+
+#ifdef NORMALMAP_ENABLED
+    if (dot(v_Tangent, v_Tangent) > 0.0) {
+        vec3 normalTexel = texture2D(normalMap, uv).xyz;
+        if (dot(normalTexel, normalTexel) > 0.0) { // Valid normal map
+            N = (normalTexel * 2.0 - 1.0);
+            // Apply scalar multiplier to normal vector of texture.
+            N = normalize(N * vec3(normalScale, normalScale, 1.0));
+            // FIXME Why need to negate
+            tbn[1] = -tbn[1];
+            N = normalize(tbn * N);
+        }
+    }
+#endif
+
+    // Diffuse part of all lights
+    vec3 diffuseTerm = vec3(0.0, 0.0, 0.0);
+    // Specular part of all lights
+    vec3 specularTerm = vec3(0.0, 0.0, 0.0);
+
+    float ndv = clamp(dot(N, V), 0.0, 1.0);
+    vec3 fresnelTerm = F_Schlick(ndv, spec);
+
+#ifdef AMBIENT_LIGHT_COUNT
+    for(int _idx_ = 0; _idx_ < AMBIENT_LIGHT_COUNT; _idx_++)
+    {{
+        diffuseTerm += ambientLightColor[_idx_];
+    }}
+#endif
+
+#ifdef AMBIENT_SH_LIGHT_COUNT
+    for(int _idx_ = 0; _idx_ < AMBIENT_SH_LIGHT_COUNT; _idx_++)
+    {{
+        diffuseTerm += calcAmbientSHLight(_idx_, N) * ambientSHLightColor[_idx_];
+    }}
+#endif
+
+#ifdef POINT_LIGHT_COUNT
+#if defined(POINT_LIGHT_SHADOWMAP_COUNT)
+    float shadowContribsPoint[POINT_LIGHT_COUNT];
+    if(shadowEnabled)
+    {
+        computeShadowOfPointLights(v_WorldPosition, shadowContribsPoint);
+    }
+#endif
+    for(int _idx_ = 0; _idx_ < POINT_LIGHT_COUNT; _idx_++)
+    {{
+
+        vec3 lightPosition = pointLightPosition[_idx_];
+        vec3 lc = pointLightColor[_idx_];
+        float range = pointLightRange[_idx_];
+
+        vec3 L = lightPosition - v_WorldPosition;
+
+        // Calculate point light attenuation
+        float dist = length(L);
+        float attenuation = lightAttenuation(dist, range);
+        L /= dist;
+        vec3 H = normalize(L + V);
+        float ndl = clamp(dot(N, L), 0.0, 1.0);
+        float ndh = clamp(dot(N, H), 0.0, 1.0);
+
+        float shadowContrib = 1.0;
+#if defined(POINT_LIGHT_SHADOWMAP_COUNT)
+        if(shadowEnabled)
+        {
+            shadowContrib = shadowContribsPoint[_idx_];
+        }
+#endif
+
+        vec3 li = lc * ndl * attenuation * shadowContrib;
+        diffuseTerm += li;
+        specularTerm += li * fresnelTerm * D_Phong(g, ndh);
+    }}
+#endif
+
+#ifdef DIRECTIONAL_LIGHT_COUNT
+#if defined(DIRECTIONAL_LIGHT_SHADOWMAP_COUNT)
+    float shadowContribsDir[DIRECTIONAL_LIGHT_COUNT];
+    if(shadowEnabled)
+    {
+        computeShadowOfDirectionalLights(v_WorldPosition, shadowContribsDir);
+    }
+#endif
+    for(int _idx_ = 0; _idx_ < DIRECTIONAL_LIGHT_COUNT; _idx_++)
+    {{
+
+        vec3 L = -normalize(directionalLightDirection[_idx_]);
+        vec3 lc = directionalLightColor[_idx_] * causticsAffector;
+
+        vec3 H = normalize(L + V);
+        float ndl = clamp(dot(N, L), 0.0, 1.0);
+        float ndh = clamp(dot(N, H), 0.0, 1.0);
+
+        float shadowContrib = 1.0;
+#if defined(DIRECTIONAL_LIGHT_SHADOWMAP_COUNT)
+        if(shadowEnabled)
+        {
+            shadowContrib = shadowContribsDir[_idx_];
+        }
+#endif
+
+        vec3 li = lc * ndl * shadowContrib;
+
+        diffuseTerm += li;
+        specularTerm += li * fresnelTerm * D_Phong(g, ndh);
+    }}
+#endif
+
+#ifdef SPOT_LIGHT_COUNT
+#if defined(SPOT_LIGHT_SHADOWMAP_COUNT)
+    float shadowContribsSpot[SPOT_LIGHT_COUNT];
+    if(shadowEnabled)
+    {
+        computeShadowOfSpotLights(v_WorldPosition, shadowContribsSpot);
+    }
+#endif
+    for(int i = 0; i < SPOT_LIGHT_COUNT; i++)
+    {
+        vec3 lightPosition = spotLightPosition[i];
+        vec3 spotLightDirection = -normalize(spotLightDirection[i]);
+        vec3 lc = spotLightColor[i];
+        float range = spotLightRange[i];
+        float a = spotLightUmbraAngleCosine[i];
+        float b = spotLightPenumbraAngleCosine[i];
+        float falloffFactor = spotLightFalloffFactor[i];
+
+        vec3 L = lightPosition - v_WorldPosition;
+        // Calculate attenuation
+        float dist = length(L);
+        float attenuation = lightAttenuation(dist, range);
+
+        // Normalize light direction
+        L /= dist;
+        // Calculate spot light fall off
+        float c = dot(spotLightDirection, L);
+
+        float falloff;
+        // Fomular from real-time-rendering
+        falloff = clamp((c - a) /(b - a), 0.0, 1.0);
+        falloff = pow(falloff, falloffFactor);
+
+        vec3 H = normalize(L + V);
+        float ndl = clamp(dot(N, L), 0.0, 1.0);
+        float ndh = clamp(dot(N, H), 0.0, 1.0);
+
+        float shadowContrib = 1.0;
+#if defined(SPOT_LIGHT_SHADOWMAP_COUNT)
+        if (shadowEnabled)
+        {
+            shadowContrib = shadowContribsSpot[i];
+        }
+#endif
+
+        vec3 li = lc * attenuation * (1.0 - falloff) * shadowContrib * ndl;
+
+        diffuseTerm += li;
+        specularTerm += li * fresnelTerm * D_Phong(g, ndh);
+    }
+#endif
+
+    vec4 outColor = albedoColor;
+    outColor.rgb *= max(diffuseTerm, vec3(0.0));
+
+    outColor.rgb += max(specularTerm, vec3(0.0));
+
+
+#ifdef AMBIENT_CUBEMAP_LIGHT_COUNT
+    vec3 L = reflect(-V, N);
+    float rough2 = clamp(1.0 - g, 0.0, 1.0);
+    // FIXME fixed maxMipmapLevel ?
+    float bias2 = rough2 * 5.0;
+    // One brdf lookup is enough
+    vec2 brdfParam2 = texture2D(ambientCubemapLightBRDFLookup[0], vec2(rough2, ndv)).xy;
+    vec3 envWeight2 = spec * brdfParam2.x + brdfParam2.y;
+    vec3 envTexel2;
+    for(int _idx_ = 0; _idx_ < AMBIENT_CUBEMAP_LIGHT_COUNT; _idx_++)
+    {{
+    #ifdef SUPPORT_TEXTURE_LOD
+        envTexel2 = RGBMDecode(textureCubeLodEXT(ambientCubemapLightCubemap[_idx_], L, bias2), 8.12);
+    #else
+        envTexel2 = RGBMDecode(textureCube(ambientCubemapLightCubemap[_idx_], L), 8.12);
+    #endif
+        // TODO mix ?
+        outColor.rgb += ambientCubemapLightColor[_idx_] * envTexel2 * envWeight2;
+    }}
+#endif
+
+#ifdef ENVIRONMENTMAP_ENABLED
+
+    vec3 envWeight = g * fresnelTerm;
+    vec3 L = reflect(-V, N);
+
+    #ifdef PARALLAX_CORRECTED
+    L = parallaxCorrect(L, v_WorldPosition, environmentBoxMin, environmentBoxMax);
+#endif
+
+    #ifdef ENVIRONMENTMAP_PREFILTER
+    float rough = clamp(1.0 - g, 0.0, 1.0);
+    float bias = rough * maxMipmapLevel;
+    // PENDING Only env map can have HDR
+        #ifdef SUPPORT_TEXTURE_LOD
+    vec3 envTexel = decodeHDR(textureCubeLodEXT(environmentMap, L, bias)).rgb;
+        #else
+    vec3 envTexel = decodeHDR(textureCube(environmentMap, L)).rgb;
+        #endif
+
+        #ifdef BRDFLOOKUP_ENABLED
+    vec2 brdfParam = texture2D(brdfLookup, vec2(rough, ndv)).xy;
+    envWeight = spec * brdfParam.x + brdfParam.y;
+        #endif
+
+    #else
+    vec3 envTexel = textureCube(environmentMap, L).xyz;
+    #endif
+
+    outColor.rgb += envTexel * envWeight;
+#endif
+
+    float aoFactor = 1.0;
+#ifdef SSAOMAP_ENABLED
+    // PENDING
+    aoFactor = min(texture2D(ssaoMap, (gl_FragCoord.xy - viewport.xy) / viewport.zw).r, aoFactor);
+#endif
+
+#ifdef AOMAP_ENABLED
+    aoFactor = min(1.0 - clamp((1.0 - texture2D(aoMap, v_Texcoord2).r) * aoIntensity, 0.0, 1.0), aoFactor);
+#endif
+
+#ifdef OCCLUSIONMAP_ENABLED
+    // Use R channel for occlusion. Same with glTF.
+    aoFactor = min(1.0 - clamp((1.0 - texture2D(occlusionMap, v_Texcoord).r), 0.0, 1.0), aoFactor);
+#endif
+
+    outColor.rgb *= aoFactor;
+
+    vec3 lEmission = emission;
+#ifdef EMISSIVEMAP_ENABLED
+    lEmission *= texture2D(emissiveMap, uv).rgb;
+#endif
+    outColor.rgb += lEmission * emissionIntensity;
+
+    if(lineWidth > 0.)
+    {
+        outColor.rgb = mix(outColor.rgb, lineColor.rgb, (1.0 - edgeFactor(lineWidth)) * lineColor.a);
+    }
+
+#ifdef ALPHA_TEST
+    if (outColor.a < alphaCutoff) {
+        discard;
+    }
+#endif
+
+#ifdef TONEMAPPING
+    outColor.rgb = ACESToneMapping(outColor.rgb);
+#endif
+#ifdef SRGB_ENCODE
+    outColor = linearTosRGB(outColor);
+#endif
+
+    if (fogRange > 0.0) {
+        vec3 fogColor = mix(fogColor1, fogColor0, clamp(normalize(v_WorldPosition.xyz - eyePos).y, 0.0, 1.0));
+
+        float eyeDist = length(v_WorldPosition.xyz - eyePos) / fogRange;
+        outColor.rgb = mix(
+            fogColor, outColor.rgb, clamp(exp2(-fogDensity * fogDensity * eyeDist * eyeDist * LOG2), 0.0, 1.0)
+        ) // Simply use sceneColor to tint the color
+        * sceneColor;
+    }
+
+    gl_FragColor = vec4(outColor.rgb, 1.0);
+}
+@end
+`);
+
+/***/ }),
+
+/***/ "./src/grass.glsl":
+/*!************************!*\
+  !*** ./src/grass.glsl ***!
+  \************************/
+/*! exports provided: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony default export */ __webpack_exports__["default"] = (`
+@export grass.vertex
+// LICENSE: MIT
+// Copyright (c) 2017 by Mike Linkovich
+
+#define SHADER_NAME grass
+
+precision highp float;
+
+#define PI 3.141592654
+
+#define TRANSITION_NOISE 0.2                  // transition noise scale
+
+const vec3 LIGHT_COLOR = vec3(1.0, 1.0, 0.99);
+const vec3 SPECULAR_COLOR = vec3(1.0, 1.0, 0.0);
+
+uniform mat4 worldViewMatrix : WORLDVIEW;
+uniform mat4 worldMatrix : WORLD;
+uniform mat4 projectionMatrix : PROJECTION;
+uniform vec2 drawPos; // centre of where we want to draw
+uniform float time;  // used to animate blades
+uniform sampler2D heightMap;
+uniform vec3 heightMapScale;
+uniform float windIntensity;
+
+attribute float vindex; // Which vertex are we drawing - the main thing we need to know
+attribute vec4 offset; // {x:x, y:y, z:z, w:rot} (blade's position & rotation)
+attribute vec4 shape; // {x:width, y:height, z:lean, w:curve} (blade's shape properties)
+
+varying vec2 v_Texcoord;
+varying vec3 v_Normal;
+varying vec3 v_WorldPosition;
+varying vec3 v_Barycentric;
+
+#ifdef VERTEX_COLOR
+varying vec4 v_Color;
+#endif
+
+// Rotate by an angle
+vec2 rotate(float x, float y, float r) {
+	float c = cos(r);
+	float s = sin(r);
+	return vec2(x * c - y * s, x * s + y * c);
+}
+
+// Rotate by a vector
+vec2 rotate (float x, float y, vec2 r) {
+	return vec2(x * r.x - y * r.y, x * r.y + y * r.x);
+}
+
+void main() {
+	float di = floor(vindex / 2.0);  // div index (0 .. BLADE_DIVS)
+	float hpct = di / float(BLADE_SEGS);  // percent of height of blade this vertex is at
+	float bside = floor(vindex / float(BLADE_VERTS));  // front/back side of blade
+	float bedge = mod(vindex, 2.0);  // left/right edge (x=0 or x=1)
+	// Vertex position - start with 2D shape, no bend applied
+	vec3 vpos = vec3(
+		shape.x * (bedge - 0.5) * (1.0 - pow(hpct, 3.0)), // taper blade edges as approach tip
+		0.0, // flat y, unbent
+		shape.y * di / float(BLADE_SEGS) // height of vtx, unbent
+	);
+
+	// Start computing a normal for this vertex
+	vec3 normal = vec3(rotate(0.0, bside * 2.0 - 1.0, offset.w), 0.0);
+
+	// Apply blade's natural curve amount
+	float curve = shape.w;
+	// Then add animated curve amount by time using this blade's
+	// unique properties to randomize its oscillation
+	curve += shape.w + 0.125 * (sin(time * 4.0 + offset.w * 0.2 * shape.y + offset.x + offset.y));
+	// put lean and curve together
+	float rot = shape.z + curve * hpct;
+	vec2 rotv = vec2(cos(rot), sin(rot));
+	vpos.yz = rotate(vpos.y, vpos.z, rotv);
+	normal.yz = rotate(normal.y, normal.z, rotv);
+
+	// rotation of this blade as a vector
+	rotv = vec2(cos(offset.w), sin(offset.w));
+	vpos.xy = rotate(vpos.x, vpos.y, rotv);
+
+	// Based on centre of view cone position, what grid tile should
+	// this piece of grass be drawn at?
+	float fPatchSize = float(PATCH_SIZE);
+	vec2 gridOffset = vec2(
+		floor((drawPos.x - offset.x) / fPatchSize) * fPatchSize + fPatchSize / 2.0,
+		floor((drawPos.y - offset.y) / fPatchSize) * fPatchSize + fPatchSize / 2.0
+	);
+
+	// Find the blade mesh world x,y position
+	vec2 bladePos = vec2(offset.xy + gridOffset);
+
+	// height/light map sample position
+	vec2 samplePos = bladePos.xy / fPatchSize * heightMapScale.xy * 0.5 + vec2(0.5);
+
+	// Compute wind effect
+	// Using the lighting channel as noise seems make the best looking wind for some reason!
+	float wind = texture2D(heightMap, vec2(samplePos.x - time / 2500.0, samplePos.y - time / 200.0) * 6.0).g;
+	//float wind = texture2D(heightMap, vec2(samplePos.x - time / 2500.0, samplePos.y - time / 100.0) * 6.0).r;
+	//float wind = texture2D(heightMap, vec2(samplePos.x - time / 2500.0, samplePos.y - time / 100.0) * 4.0).b;
+	// Apply some exaggeration to wind
+	//wind = (clamp(wind, 0.125, 0.875) - 0.125) * (1.0 / 0.75);
+	wind = (clamp(wind, 0.25, 1.0) - 0.25) * (1.0 / 0.75);
+	wind = wind * wind * windIntensity;
+	wind *= hpct; // scale wind by height of blade
+	wind = -wind;
+	rotv = vec2(cos(wind), sin(wind));
+	// Wind blows in axis-aligned direction to make things simpler
+	vpos.yz = rotate(vpos.y, vpos.z, rotv);
+	normal.yz = rotate(normal.y, normal.z, rotv);
+
+	// Sample the heightfield data texture to get altitude for this blade position
+	vec4 hdata = texture2D(heightMap, samplePos);
+	// float altitude = ((hdata.r - 0.5) * heightMapScale.z + 0.5) * 5.0;
+	float altitude = hdata.r;
+
+	// Determine if we want the grass to appear or not
+	// Use the noise channel to perturb the altitude grass starts growing at.
+	float noisyAltitude = altitude + hdata.b * float(TRANSITION_NOISE) - (float(TRANSITION_NOISE) / 2.0);
+	float degenerate = (clamp(noisyAltitude, float(TRANSITION_LOW), float(TRANSITION_HIGH)) - float(TRANSITION_LOW))
+		* (1.0 / (float(TRANSITION_HIGH) - float(TRANSITION_LOW)));
+
+	// Transition geometry toward degenerate as we approach beach altitude
+	vpos *= degenerate;
+
+	// Translate to world coordinates
+	vpos.x += bladePos.x;
+	vpos.y += bladePos.y;
+	vpos.z += altitude;
+
+	// grass texture coordinate for this vertex
+	v_Texcoord = vec2(bedge, di * 2.0);
+	v_Normal = normal.xzy;
+	v_WorldPosition = (worldMatrix * vec4(vpos.xzy, 1.0)).xyz;
+
+	gl_Position = projectionMatrix * worldViewMatrix * vec4(vpos.xzy, 1.0);
+
+	#ifdef VERTEX_COLOR
+	float fHeightTall = float(BLADE_HEIGHT_TALL);
+	float brightness = clamp((vpos.z + fHeightTall / 2.0) / fHeightTall, 0.0, 1.0);
+	v_Color = vec4(vec3(brightness), 1.0);
+	#endif
+
+	v_Barycentric = vec3(1.0);
+}
+@end
+
+`);
 
 /***/ }),
 
@@ -40279,33 +42173,46 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _Fishes__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./Fishes */ "./src/Fishes.js");
 /* harmony import */ var _Terrain__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./Terrain */ "./src/Terrain.js");
 /* harmony import */ var _loadModel__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./loadModel */ "./src/loadModel.js");
+/* harmony import */ var _Grass__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ./Grass */ "./src/Grass.js");
+/* harmony import */ var lodash_throttle__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! lodash.throttle */ "./node_modules/lodash.throttle/index.js");
+/* harmony import */ var lodash_throttle__WEBPACK_IMPORTED_MODULE_5___default = /*#__PURE__*/__webpack_require__.n(lodash_throttle__WEBPACK_IMPORTED_MODULE_5__);
+/* harmony import */ var _waterplane_glsl__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./waterplane.glsl */ "./src/waterplane.glsl");
+/* harmony import */ var _caustics_glsl__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ./caustics.glsl */ "./src/caustics.glsl");
 
 
 
 
 
-claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"].import(__webpack_require__(/*! raw-loader!./waterplane.glsl */ "./node_modules/raw-loader/index.js!./src/waterplane.glsl"));
-claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"].import(__webpack_require__(/*! raw-loader!./forward_caustics.glsl */ "./node_modules/raw-loader/index.js!./src/forward_caustics.glsl"));
+
+
+
+
+
+claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"].import(_waterplane_glsl__WEBPACK_IMPORTED_MODULE_6__["default"]);
+claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"].import(_caustics_glsl__WEBPACK_IMPORTED_MODULE_7__["default"]);
 
 const causticsShader = new claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"](
-    claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"].source('forward_caustics.vertex'),
-    claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"].source('forward_caustics.fragment')
+    claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"].source('caustics.vertex'),
+    claygl__WEBPACK_IMPORTED_MODULE_0__["Shader"].source('caustics.fragment')
 );
 
 var config = {
 
     causticsIntensity: 3,
-    causticsScale: 1,
+    causticsScale: 2,
 
     fogDensity: 0.14,
-    fogColor0: [36, 95, 85],
-    fogColor1: [36, 50, 95],
+    fogColor0: [56 * 1.5, 94 * 1.5, 80 * 1.5],
+    fogColor1: [56, 94, 70],
 
-    sceneColor: [144, 190, 200],
-    ambientIntensity: 0.2
+    sceneColor: [137, 255, 212],
+    ambientIntensity: 0.2,
+
+    cameraAcceleration: 0.0002,
+    cameraMaxSpeed: 1
 };
 
-claygl__WEBPACK_IMPORTED_MODULE_0__["application"].create(document.getElementById('main'), {
+claygl__WEBPACK_IMPORTED_MODULE_0__["application"].create(canvas, {
 
     width: window.innerWidth,
     height: window.innerHeight,
@@ -40317,23 +42224,38 @@ claygl__WEBPACK_IMPORTED_MODULE_0__["application"].create(document.getElementByI
     },
 
     init(app) {
-        const camera = app.createCamera([0, 30, 30], [0, 30, -1]);
+        const camera = app.createCamera([0, 50, 150], [0, 50, -1]);
+        camera.far = 3000;
+        this._camera = camera;
+        this._cameraSpeed = new claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"]();
+        this._cameraAcceleration = new claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"]();
+        setInterval(() => {
+            const fishesCenter = this._fishes.getCenter();
+            if (fishesCenter) {
+                this._cameraAcceleration = fishesCenter.sub(this._camera.position);
+                this._cameraAcceleration.scale(config.cameraAcceleration);
+            }
+        }, 100);
 
         const terrain = new _Terrain__WEBPACK_IMPORTED_MODULE_2__["default"](causticsShader);
         const terrainPlane = terrain.getRootNode();
         terrainPlane.scale.set(1000, 1000, 1);
         terrainPlane.rotation.rotateX(-Math.PI / 2);
         terrainPlane.castShadow = false;
+
         app.scene.add(terrainPlane);
         app.scene.scale.set(0.1, 0.1, 0.1);
 
+        const grass = new _Grass__WEBPACK_IMPORTED_MODULE_4__["default"]();
+        this._grass = grass;
+        app.scene.add(grass.getMesh());
+
         const fishes = new _Fishes__WEBPACK_IMPORTED_MODULE_1__["default"](causticsShader, function () {
             const box = new claygl__WEBPACK_IMPORTED_MODULE_0__["BoundingBox"]();
-            box.min.set(-60, 0, -60);
-            box.max.set(60, 40, 60);
-            fishes.randomPositionInBox(box);
-
+            box.min.set(-500, 0, -500);
+            box.max.set(500, 120, 500);
             fishes.setWorldSize(box);
+            fishes.randomPositionInBox(box);
         });
         this._fishes = fishes;
 
@@ -40361,27 +42283,28 @@ claygl__WEBPACK_IMPORTED_MODULE_0__["application"].create(document.getElementByI
         this._causticsTexture = new claygl__WEBPACK_IMPORTED_MODULE_0__["Texture2D"]({
             anisotropic: 8
         });
-        this._causticsTexture.load('asset/texture/caustics.png');
+        this._causticsTexture.load('asset/texture/caustics.jpg');
 
         const cube = app.createCubeInside({
             shader: causticsShader
         });
-        cube.scale.set(500, 500, 500);
+        cube.scale.set(1000, 1000, 1000);
         cube.castShadow = false;
-        // var plane = new Plane();
-        // var setGoalAround = throttle(function (e) {
-        //     if (config.text) {
-        //         return;
-        //     }
-        //     var v2 = app.renderer.screenToNdc(e.offsetX, e.offsetY);
-        //     var ray = camera.castRay(v2);
-        //     plane.normal.copy(camera.worldTransform.z);
-        //     plane.distance = 0;
 
-        //     var out = ray.intersectPlane(plane);
-        //     fishes.goTo(out, 10);
-        // }, 500);
+        const plane = new claygl__WEBPACK_IMPORTED_MODULE_0__["Plane"]();
+        const setGoalAround = lodash_throttle__WEBPACK_IMPORTED_MODULE_5___default()(function (x, y) {
+            const v2 = app.renderer.screenToNDC(x, y);
+            const ray = camera.castRay(v2);
+            plane.normal.copy(camera.worldTransform.z);
+            plane.distance = -10;
 
+            const out = ray.intersectPlane(plane);
+            fishes.goTo(out, 10);
+        }, 500);
+
+        document.body.addEventListener('mousemove', function (e) {
+            // setGoalAround(e.clientX, e.clientY);
+        });
     },
 
     _loadWhale(app) {
@@ -40391,7 +42314,7 @@ claygl__WEBPACK_IMPORTED_MODULE_0__["application"].create(document.getElementByI
             shader: causticsShader
         }).then(result => {
             const moveNode = new claygl__WEBPACK_IMPORTED_MODULE_0__["Node"]();
-            result.rootNode.scale.set(1, 1, 1);
+            result.rootNode.scale.set(10, 10, 10);
             result.rootNode.rotation.rotateY(-Math.PI / 4);
             moveNode.add(result.rootNode);
             app.scene.add(moveNode);
@@ -40428,10 +42351,8 @@ claygl__WEBPACK_IMPORTED_MODULE_0__["application"].create(document.getElementByI
                 .during(function () {
                     claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].sub(dir, moveNode.position, oldPosition);
                     if (dir.len()) {
-                        claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].normalize(dir, dir);
-                        moveNode.update();
-                        moveNode.worldTransform.z = dir;
-                        moveNode.decomposeWorldTransform();
+                        moveNode.lookAt(oldPosition, claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].UP);
+                        moveNode.y += 40;
                         // TODO
                         moveNode.scale.set(1, 1, 1);
                     }
@@ -40502,15 +42423,148 @@ claygl__WEBPACK_IMPORTED_MODULE_0__["application"].create(document.getElementByI
                 mesh.material.set('fogColor0', normalizeColor(config.fogColor0));
                 mesh.material.set('fogColor1', normalizeColor(config.fogColor1));
                 mesh.material.set('fogDensity', config.fogDensity);
-                mesh.material.set('fogRange', 2);
+                mesh.material.set('fogRange', 3);
 
                 mesh.material.set('causticsScale', config.causticsScale);
                 mesh.material.set('causticsIntensity', config.causticsIntensity);
             }
         });
+
+        this._cameraSpeed.add(this._cameraAcceleration);
+        if (this._cameraSpeed.len() > 0) {
+            this._cameraSpeed.scale(Math.max(config.cameraMaxSpeed / this._cameraSpeed.len()), 1);
+
+            const newPos = this._camera.position.clone().add(this._cameraSpeed);
+            this._camera.lookAt(newPos, claygl__WEBPACK_IMPORTED_MODULE_0__["Vector3"].UP);
+            this._camera.position.copy(newPos);
+        }
+
+        this._grass.update(app.frameTime, this._camera);
     }
 });
 
+
+/***/ }),
+
+/***/ "./src/waterplane.glsl":
+/*!*****************************!*\
+  !*** ./src/waterplane.glsl ***!
+  \*****************************/
+/*! exports provided: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony default export */ __webpack_exports__["default"] = (`
+@export waterplane.vertex
+
+uniform mat4 worldViewProjection : WORLDVIEWPROJECTION;
+uniform mat4 worldInverseTranspose : WORLDINVERSETRANSPOSE;
+uniform mat4 world : WORLD;
+
+uniform vec2 uvRepeat = vec2(1.0, 1.0);
+uniform vec2 uvOffset = vec2(0.0, 0.0);
+
+attribute vec3 position : POSITION;
+attribute vec2 texcoord : TEXCOORD_0;
+attribute vec3 normal : NORMAL;
+
+varying vec2 v_Texcoord;
+varying vec3 v_Normal;
+varying vec3 v_WorldPosition;
+
+
+void main()
+{
+
+    gl_Position = worldViewProjection * vec4(position, 1.0);
+
+    v_Texcoord = texcoord * uvRepeat + uvOffset;
+    v_WorldPosition = (world * vec4(position, 1.0)).xyz;
+
+    v_Normal = normalize((worldInverseTranspose * vec4(normal, 0.0)).xyz);
+
+}
+
+@end
+
+@export waterplane.fragment
+
+#define LOG2 1.442695
+
+uniform mat4 viewInverse : VIEWINVERSE;
+
+varying vec2 v_Texcoord;
+varying vec3 v_Normal;
+varying vec3 v_WorldPosition;
+
+#ifdef NORMALMAP_ENABLED
+uniform sampler2D normalMap;
+#endif
+
+#ifdef ENVIRONMENTMAP_ENABLED
+uniform samplerCube environmentMap;
+#endif
+
+uniform vec3 color : [1.0, 1.0, 1.0];
+uniform float alpha : 1.0;
+
+uniform float reflectivity : 0.8;
+uniform float elapsedTime;
+
+uniform float fogDensity = 0.2;
+uniform vec3 fogColor0 = vec3(0.3, 0.3, 0.3);
+uniform vec3 fogColor1 = vec3(0.1, 0.1, 0.1);
+
+uniform vec3 sceneColor = vec3(1, 1, 1);
+// TODO
+uniform float fogRange = 4.0;
+
+vec4 getNoise(vec2 uv)
+{
+	vec2 uv0 = (uv / 103.0) + vec2(elapsedTime / 17.0, elapsedTime / 29.0);
+	vec2 uv1 = uv / 107.0-vec2( elapsedTime / -19.0, elapsedTime / 31.0 );
+	vec2 uv2 = uv / vec2( 8907.0, 9803.0 ) + vec2( elapsedTime / 101.0, elapsedTime / 97.0 );
+	vec2 uv3 = uv / vec2( 1091.0, 1027.0 ) - vec2( elapsedTime / 109.0, elapsedTime / -113.0 );
+	vec4 noise = texture2D(normalMap, uv0) +
+		texture2D(normalMap, uv1) +
+		texture2D(normalMap, uv2) +
+		texture2D(normalMap, uv3);
+	return noise * 0.5 - 1.0;
+}
+
+void main()
+{
+    vec4 outColor = vec4(color, alpha);
+
+    vec3 eyePos = viewInverse[3].xyz;
+    vec3 viewDirection = normalize(eyePos - v_WorldPosition);
+
+    vec3 normal = v_Normal;
+#ifdef NORMALMAP_ENABLED
+    normal = normalize(getNoise(v_WorldPosition.xz * 6.0).xyz * vec3( 1.5, 1.0, 1.5 ) );
+#endif
+
+#ifdef ENVIRONMENTMAP_ENABLED
+    vec3 envTexel = textureCube(environmentMap, reflect(-viewDirection, normal)).xyz;
+    outColor.rgb = outColor.rgb + envTexel * reflectivity;
+#endif
+
+    if (fogRange > 0.0) {
+        vec3 fogColor = mix(fogColor1, fogColor0, clamp(normalize(v_WorldPosition.xyz - eyePos).y, 0.0, 1.0));
+
+        float eyeDist = length(v_WorldPosition.xyz - eyePos) / fogRange;
+        outColor.rgb = mix(
+            fogColor, outColor.rgb, clamp(exp2(-fogDensity * fogDensity * eyeDist * eyeDist * LOG2), 0.0, 1.0)
+        ) // Simply use sceneColor to tint the color
+        * sceneColor;
+    }
+
+    gl_FragColor = vec4(outColor.rgb, 1.0);
+}
+
+@end
+`);
 
 /***/ })
 

@@ -1,9 +1,10 @@
+export default `
+
 @export flocking.position
 
 uniform sampler2D texturePosition;
 uniform sampler2D textureVelocity;
 
-uniform float time;
 uniform float delta;
 
 uniform vec2 resolution : VIEWPORT_SIZE;
@@ -31,7 +32,6 @@ void main()	{
 uniform sampler2D texturePosition;
 uniform sampler2D textureVelocity;
 
-uniform float time = 0.0;
 uniform float delta = 0.016; // about 0.016
 uniform float seperationDistance = 20; // 20
 uniform float alignmentDistance = 20; // 40
@@ -59,10 +59,6 @@ const float LOWER_BOUNDS = -UPPER_BOUNDS;
 
 const float SPEED_LIMIT = 9.0;
 
-float rand(vec2 co){
-    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
-}
-
 void main() {
 
     zoneRadius = seperationDistance + alignmentDistance + cohesionDistance;
@@ -80,9 +76,6 @@ void main() {
     float dist;
     vec3 dir; // direction
     float distSquared;
-
-    float seperationSquared = seperationDistance * seperationDistance;
-    float cohesionSquared = cohesionDistance * cohesionDistance;
 
     float f;
     float percent;
@@ -181,3 +174,5 @@ void main() {
 }
 
 @end
+
+`;
