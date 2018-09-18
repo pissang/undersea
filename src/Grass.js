@@ -177,7 +177,7 @@ export default class Grass {
         shadowMat.set('drawPos', [drawPos.x, drawPos.z]);
 
         geo.boundingBox = geo.boundingBox || new BoundingBox();
-        const size = this._radius * 1.2;
+        const size = this._radius * 1.7;
         geo.boundingBox.min.set(drawPos.x - size, 0, drawPos.z - size);
         geo.boundingBox.max.set(drawPos.x + size, BLADE_HEIGHT_MAX, drawPos.z + size);
     }

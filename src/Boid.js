@@ -6,7 +6,7 @@ var Boid = function () {
 
     var vector = new Vector3(),
     _acceleration, _width = 500, _height = 500, _depth = 200, _goal, _neighborhoodRadius = 50,
-    _maxSpeed = 0.5, _maxSteerForce = 0.2, _avoidWalls = false,
+    _maxSpeed = 0.5, _maxSteerForce = 0.1, _avoidWalls = false,
 
     _goalIntensity = 0.001;
 
@@ -108,10 +108,11 @@ var Boid = function () {
         _acceleration.add( this.alignment( boids ) );
         _acceleration.add( this.cohesion( boids ) );
         _acceleration.add( this.separation( boids ) );
-
     };
 
     this.move = function () {
+
+        _acceleration.y *= 0.5;
 
         this.velocity.add( _acceleration );
 
@@ -158,12 +159,12 @@ var Boid = function () {
 
         var distance = Vector3.distance(this.position, target);
 
-        if ( distance < 150 ) {
+        if ( distance < 30 ) {
 
             var steer = new Vector3();
 
             Vector3.sub(steer, this.position, target );
-            Vector3.scale(steer, steer, 0.5 / distance );
+            Vector3.scale(steer, steer, 0.1 / distance );
 
             Vector3.add(_acceleration, _acceleration, steer );
 
@@ -283,7 +284,7 @@ var Boid = function () {
                 Vector3.sub(repulse, this.position, boid.position);
 
                 Vector3.normalize(repulse, repulse);
-                Vector3.scale(repulse, repulse, 0.5 / distance);
+                Vector3.scale(repulse, repulse, 1 / distance);
                 Vector3.add(posSum, posSum, repulse);
 
             }

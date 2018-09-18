@@ -39,7 +39,7 @@ var config = {
 
     fogDensity: 0.14,
     fogColor0: [56 * 1.5, 94 * 1.5, 80 * 1.5],
-    fogColor1: [56, 94, 70],
+    fogColor1: [56 * 1.3, 94 * 1.3, 70 * 1.3],
 
     sceneColor: [137, 255, 212],
     ambientIntensity: 0.2,
@@ -70,6 +70,7 @@ application.create(canvas, {
             if (fishesCenter) {
                 this._cameraAcceleration = fishesCenter.sub(this._camera.position);
                 this._cameraAcceleration.scale(config.cameraAcceleration);
+                this._cameraAcceleration.y *= 0.1;
             }
         }, 100);
 
@@ -240,8 +241,6 @@ application.create(canvas, {
     },
 
     loop(app) {
-        this._fishes.update(app.frameTime);
-
         const lightViewMatrix = this._light.worldTransform.clone().invert();
 
         function normalizeColor(color) {
@@ -275,6 +274,7 @@ application.create(canvas, {
             this._camera.position.copy(newPos);
         }
 
+        this._fishes.update(app.frameTime, this._camera);
         this._grass.update(app.frameTime, this._camera);
     }
 });

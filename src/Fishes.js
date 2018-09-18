@@ -3,7 +3,7 @@ import loadModel from './loadModel';
 import Boid from './Boid';
 
 const fishIds = ['01', '02', '05', '07', '12'];
-const FISH_SCALE = 0.01;
+const FISH_SCALE = 0.02;
 export default class Fishes {
     constructor(shader, cb) {
         this._rootNode = new clayNode();
@@ -89,12 +89,15 @@ export default class Fishes {
         this._rootNode.position.y = -box.min.y + height / 2;
     }
 
-    update(dTime) {
+    update(dTime, camera) {
         const boids = this._boids;
         const up = Vector3.UP;
         const target = new Vector3();
+        const avoidTarget = camera.position.clone();
+        avoidTarget.y -= this._rootNode.position.y;
         for (let i = 0; i < boids.length; i++) {
             const boid = boids[i];
+            boid.repulse(avoidTarget);
             boid.run(boids);
 
             const fish = this._rootNode.childAt(i);
