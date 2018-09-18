@@ -144,12 +144,13 @@ void main() {
 	v_ViewPosition = gl_Position;
 	#else
 	// grass texture coordinate for this vertex
-	v_Texcoord = vec2(bedge, di * 2.0);
 	v_Normal = normal.xzy;
 	v_WorldPosition = (worldMatrix * vec4(vpos.xzy, 1.0)).xyz;
 
 	v_Barycentric = vec3(1.0);
 	#endif
+
+	v_Texcoord = vec2(bedge, di * 2.0);
 }
 @end
 
