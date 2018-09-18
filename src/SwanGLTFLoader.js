@@ -31,6 +31,10 @@ export default loader.GLTF.extend({
                         throw new Error('glTF Parse Error:', e);
                     }
                 }
+            },
+            fail(res) {
+                console.error(res);
+                console.error(path);
             }
         });
     },
@@ -42,6 +46,8 @@ export default loader.GLTF.extend({
                 onsuccess(res.data);
             },
             fail(res) {
+                console.error(res);
+                console.error(path);
                 onerror();
             }
         });

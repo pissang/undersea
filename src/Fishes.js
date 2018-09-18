@@ -10,7 +10,7 @@ export default class Fishes {
         this._boids = [];
 
         Promise.all(fishIds.map(function (fishId) {
-            return loadModel('asset/model/TropicalFish' + fishId + '.gltf', {
+            return loadModel('asset/model/TropicalFish' + fishId + '.json', {
                 shader: shader,
                 rootNode: new clayNode()
             });
@@ -131,6 +131,7 @@ export default class Fishes {
             boid.setGoal(boid.__goal);
             boid.setGoalIntensity(0.02);
         }
+
     }
 
     getCenter() {
