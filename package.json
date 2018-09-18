@@ -9,7 +9,8 @@
   "scripts": {
     "build": "webpack",
     "dev": "webpack --mode development --watch",
-    "swan": "sgt dev --debug --swan-path ~/Develop/baidu/efe-blue/swan-game --output-dir swan"
+    "swan": "sgt dev --debug --swan-path ~/Develop/baidu/efe-blue/swan-game --output-dir swan",
+    "weapp": "cp -R swan/swan_bundle_tmp/* weapp/ && rm -f weapp/swan-game.js && rm -f weapp/swan-game-open-data.js && rm -rf weapp/src"
   },
   "license": "MIT"
 }

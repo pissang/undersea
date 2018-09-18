@@ -4,7 +4,8 @@
             "dist/**/*",
             "asset-raw/**/*",
             "asset/**/*.fbx",
-            "asset/model/*_NRM.jpg"
+            "asset/model/*_NRM.jpg",
+            "weapp/**/*"
         ]
     }
 }

@@ -70,7 +70,6 @@ application.create(canvas, {
             if (fishesCenter) {
                 this._cameraAcceleration = fishesCenter.sub(this._camera.position);
                 this._cameraAcceleration.scale(config.cameraAcceleration);
-                this._cameraAcceleration.y *= 0.1;
             }
         }, 100);
 

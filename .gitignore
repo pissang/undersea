@@ -1,3 +1,6 @@
 node_modules
 asset-raw
 swan
+weapp
+project.swan.json
+package-lock.json
