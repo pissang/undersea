@@ -1,11 +1,14 @@
-import {Node as clayNode, Vector3, Texture2D} from 'claygl';
+import {Node as clayNode, Vector3, Texture2D, InstancedMesh, Matrix4} from 'claygl';
 import loadModel from './loadModel';
 import Boid from './Boid';
 
 const fishIds = ['01', '02', '05', '07', '12'];
 const FISH_SCALE = 0.02;
+
+const FISH_COUNT = 600;
+const INSTANCING = false;
 export default class Fishes {
-    constructor(shader, cb) {
+    constructor(shader, cb, app) {
         this._rootNode = new clayNode();
         this._boids = [];
 
@@ -13,29 +16,44 @@ export default class Fishes {
             return loadModel('asset/model/TropicalFish' + fishId + '.json', {
                 shader: shader,
                 rootNode: new clayNode()
+            }).then(fish => {
+                console.log(`Fish ${fishId} loaded`);
+                return fish;
             });
         })).then(results => {
-            results.forEach(function (result, idx) {
+
+            const meshes = [];
+            results.forEach((result, idx) => {
                 // const normalMap = new Texture2D({
                 //     anisotropic: 32
                 // });
                 // normalMap.load('asset/model/TropicalFish' + fishIds[idx] + '_NRM.jpg');
-                result.rootNode.traverse(function (mesh) {
-                    if (mesh.material) {
-                        // mesh.geometry.generateTangents();
-                        // mesh.material.set({
-                        //     roughness: 0.2
-                        // });
-                        // mesh.material.get('diffuseMap').anisotropic = 8;
-                        // mesh.material.normalMap = normalMap;
-                        // console.log(JSON.stringify(mesh.geometry.attributes.texcoord0.value));
-                    }
-                    if (fishIds[idx] === '15') {
-                        mesh.rotation.rotateY(Math.PI / 2);
-                    }
-                });
+                const mesh = result.meshes[0];
+                // mesh.geometry.generateTangents();
+                // mesh.material.set({
+                //     roughness: 0.2
+                // });
+                // mesh.material.get('diffuseMap').anisotropic = 8;
+                // mesh.material.normalMap = normalMap;
+                // console.log(JSON.stringify(mesh.geometry.attributes.texcoord0.value));
+                if (fishIds[idx] === '15') {
+                    mesh.rotation.rotateY(Math.PI / 2);
+                }
+
+                if (INSTANCING) {
+                    const instancedMesh = new InstancedMesh({
+                        geometry: mesh.geometry,
+                        material: mesh.material
+                    });
+
+                    result.rootNode.update();
+
+                    meshes.push(instancedMesh);
+
+                    app.scene.add(instancedMesh);
+                }
             });
-            for (let i = 0; i < 200; i++) {
+            for (let i = 0; i < FISH_COUNT; i++) {
                 const boid = new Boid();
                 boid.velocity.x = Math.random() * 2 - 1;
                 boid.velocity.y = Math.random() * 0.2 - 0.1;
@@ -44,12 +62,26 @@ export default class Fishes {
                 boid.setMaxSteerForce(0.1);
                 boid.setMaxSpeed(1);
 
-                const randomFish = results[Math.round(Math.random() * (results.length - 1))];
-                const fishClone = randomFish.rootNode.clone();
+                let fishNode;
+                const randomFishIndex = Math.round(Math.random() * (results.length - 1));
+                if (!INSTANCING) {
+                    const randomFish = results[randomFishIndex];
+                    fishNode = randomFish.rootNode.clone();
+                }
+                else {
+                    fishNode = new clayNode();
+                    const fishInnerNode = new clayNode();
+                    fishNode.add(fishInnerNode);
+                    fishInnerNode.setLocalTransform(results[randomFishIndex].meshes[0].worldTransform);
+                    meshes[randomFishIndex].instances.push({
+                        node: fishInnerNode
+                    });
+                    fishNode.scale.set(FISH_SCALE, FISH_SCALE, FISH_SCALE);
+                }
 
-                fishClone.scale.set(FISH_SCALE, FISH_SCALE, FISH_SCALE);
+                boid.fishNode = fishNode;
 
-                this._rootNode.add(fishClone);
+                this._rootNode.add(fishNode);
                 this._boids.push(boid);
             }
             cb && cb();
@@ -100,7 +132,7 @@ export default class Fishes {
             boid.repulse(avoidTarget);
             boid.run(boids);
 
-            const fish = this._rootNode.childAt(i);
+            const fish = boid.fishNode;
             if (boid.velocity.squaredLength() > 0.01) {
                 Vector3.sub(target, fish.position, boid.velocity);
                 fish.lookAt(target, up);

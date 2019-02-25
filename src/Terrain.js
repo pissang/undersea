@@ -24,6 +24,7 @@ export default class Terrain {
             })
         });
         plane.material.set({
+            // color: '#c9b59c',
             diffuseMap: sandTexture,
             // normalMap: sandNormalTexture,
             uvRepeat: [20, 20],

@@ -35,7 +35,7 @@ const causticsShader = new Shader(
 var config = {
 
     causticsIntensity: 3,
-    causticsScale: 2,
+    causticsScale: 4,
 
     fogDensity: 0.14,
     fogColor0: [56 * 1.5, 94 * 1.5, 80 * 1.5],
@@ -60,7 +60,7 @@ application.create(canvas, {
     },
 
     init(app) {
-        const camera = app.createCamera([0, 50, 150], [0, 50, -1]);
+        const camera = app.createCamera([0, 50, 150], [0, 50, 0]);
         camera.far = 3000;
         this._camera = camera;
         this._cameraSpeed = new Vector3();
@@ -80,11 +80,11 @@ application.create(canvas, {
         terrainPlane.castShadow = false;
 
         app.scene.add(terrainPlane);
-        app.scene.scale.set(0.1, 0.1, 0.1);
 
         const grass = new Grass();
         this._grass = grass;
-        app.scene.add(grass.getMesh());
+        const grassMesh = grass.getMesh();
+        app.scene.add(grassMesh);
 
         const fishes = new Fishes(causticsShader, function () {
             const box = new BoundingBox();
@@ -92,7 +92,7 @@ application.create(canvas, {
             box.max.set(500, 120, 500);
             fishes.setWorldSize(box);
             fishes.randomPositionInBox(box);
-        });
+        }, app);
         this._fishes = fishes;
 
         app.scene.add(fishes.getRootNode());
@@ -257,7 +257,7 @@ application.create(canvas, {
                 mesh.material.set('fogColor0', normalizeColor(config.fogColor0));
                 mesh.material.set('fogColor1', normalizeColor(config.fogColor1));
                 mesh.material.set('fogDensity', config.fogDensity);
-                mesh.material.set('fogRange', 3);
+                mesh.material.set('fogRange', 30);
 
                 mesh.material.set('causticsScale', config.causticsScale);
                 mesh.material.set('causticsIntensity', config.causticsIntensity);

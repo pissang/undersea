@@ -57,7 +57,7 @@ float alignmentThresh = 0.65;
 const float UPPER_BOUNDS = BOUNDS;
 const float LOWER_BOUNDS = -UPPER_BOUNDS;
 
-const float SPEED_LIMIT = 9.0;
+const float SPEED_LIMIT = 2.0;
 
 void main() {
 

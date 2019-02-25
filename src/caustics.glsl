@@ -259,8 +259,8 @@ void main() {
     causticsUv *= 1.0 / 64.0 / causticsScale;
     causticsUv += elapsedTime * 0.02;
 
-    vec3 causticsAffector = Motion_4WayChaos(causticsTexture, causticsUv, 0.5).rgb
-        * causticsIntensity;
+    vec3 causticsAffector = Motion_4WayChaos(causticsTexture, causticsUv, 0.5).rgb;
+    causticsAffector = clamp((causticsAffector - vec3(0.3)) * causticsIntensity + vec3(0.3), vec3(0.0), vec3(1.0));
 
     vec2 uv = v_Texcoord;
 

@@ -3,7 +3,8 @@ import {
     Texture,
     compositor,
     FrameBuffer,
-    Shader
+    Shader,
+    Vector3
 } from 'claygl';
 
 import glslCode from './flocking.glsl';
@@ -37,7 +38,7 @@ export default class FlockingGPU {
         });
     }
 
-    randomPositionInBox(box) {
+    randomInitInBox(box) {
 
     }
 
@@ -72,6 +73,6 @@ export default class FlockingGPU {
     }
 
     getCenter(renderer) {
-
+        return new Vector3();
     }
 }
