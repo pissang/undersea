@@ -27,6 +27,13 @@ import causticsCode from './caustics.glsl';
 Shader.import(waterplaneCode);
 Shader.import(causticsCode);
 
+const stats = new Stats();
+stats.domElement.style.position = 'absolute';
+stats.domElement.style.left = '0';
+stats.domElement.style.top = '0';
+document.body.appendChild(stats.domElement);
+stats.begin();
+
 const causticsShader = new Shader(
     Shader.source('caustics.vertex'),
     Shader.source('caustics.fragment')
@@ -87,11 +94,6 @@ application.create(canvas, {
         app.scene.add(grassMesh);
 
         const fishes = new Fishes(causticsShader, function () {
-            const box = new BoundingBox();
-            box.min.set(-500, 0, -500);
-            box.max.set(500, 120, 500);
-            fishes.setWorldSize(box);
-            fishes.randomPositionInBox(box);
         }, app);
         this._fishes = fishes;
 
@@ -126,21 +128,6 @@ application.create(canvas, {
         });
         cube.scale.set(1000, 1000, 1000);
         cube.castShadow = false;
-
-        const plane = new Plane();
-        const setGoalAround = throttle(function (x, y) {
-            const v2 = app.renderer.screenToNDC(x, y);
-            const ray = camera.castRay(v2);
-            plane.normal.copy(camera.worldTransform.z);
-            plane.distance = -10;
-
-            const out = ray.intersectPlane(plane);
-            fishes.goTo(out, 10);
-        }, 500);
-
-        document.body.addEventListener('mousemove', function (e) {
-            // setGoalAround(e.clientX, e.clientY);
-        });
     },
 
     _loadWhale(app) {
@@ -240,6 +227,9 @@ application.create(canvas, {
     },
 
     loop(app) {
+        stats.end();
+        stats.begin();
+
         const lightViewMatrix = this._light.worldTransform.clone().invert();
 
         function normalizeColor(color) {

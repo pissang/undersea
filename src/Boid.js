@@ -1,6 +1,5 @@
 // Based on http://www.openprocessing.org/visuals/?visualID=6910
-
-import {Vector3} from 'claygl';
+import Vector3 from 'claygl/src/math/Vector3';
 
 var Boid = function () {
 
