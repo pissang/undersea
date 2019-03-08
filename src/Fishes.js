@@ -1,12 +1,13 @@
 import {Node as clayNode, Vector3, Texture2D, InstancedMesh, Matrix4} from 'claygl';
 import loadModel from './loadModel';
-import Boid from './Boid';
+import Flocking from './Flocking';
 
 const fishIds = ['01', '02', '05', '07', '12'];
 const FISH_SCALE = 0.02;
 
-const FISH_COUNT = 300;
+const FISH_COUNT = 400;
 const INSTANCING = false;
+const WORKER = false;
 
 const BOX = {
     min: {x: -500, y: 0, z: -500},
@@ -15,10 +16,28 @@ const BOX = {
 
 export default class Fishes {
     constructor(shader, cb, app) {
-        this._worker = new Worker('./dist/worker.js');
-        this._workerInited = false;
-        this._workerLocked = false;
-        this._elapsedTime = 0;
+        if (WORKER) {
+            this._worker = new Worker('./dist/worker.js');
+            this._workerInited = false;
+            this._workerLocked = false;
+            this._elapsedTime = 0;
+
+            this._worker.onmessage = e => {
+                if (e.data.type === 'updated') {
+                    this._updated(e.data.data);
+                }
+                else if (e.data.type === 'inited') {
+                    this._workerInited = true;
+                    cb && cb();
+                }
+            };
+        }
+        else {
+            this._flocking = new Flocking({
+                count: FISH_COUNT,
+                box: BOX
+            });
+        }
 
         this._rootNode = new clayNode();
         this._rootNode.position.y = BOX.max.y / 2;
@@ -77,40 +96,40 @@ export default class Fishes {
                 this._fishes.push(fishNode);
             }
 
-            this._worker.postMessage({
-                count: FISH_COUNT,
-                box: BOX,
-                action: 'init'
-            });
+            if (WORKER) {
+                this._worker.postMessage({
+                    count: FISH_COUNT,
+                    box: BOX,
+                    action: 'init'
+                });
+            }
         });
 
-        this._worker.onmessage = e => {
-            if (e.data.type === 'updated') {
-                this._updated(e.data.data);
-            }
-            else if (e.data.type === 'inited') {
-                this._workerInited = true;
-                cb && cb();
-            }
-        };
     }
 
     update(frameTime, camera) {
-        this._elapsedTime += frameTime;
-
-        if (this._workerLocked || !this._workerInited) {
-            return;
-        }
-
         let {x, y, z} = camera.position;
         y -= this._rootNode.position.y;
+        const avoid = {x, y, z};
+        if (WORKER) {
+            this._elapsedTime += frameTime;
 
-        this._workerLocked = true;
-        this._worker.postMessage({
-            action: 'update',
-            deltaTime: this._elapsedTime,
-            avoid: {x, y, z}
-        });
+            if (this._workerLocked || !this._workerInited) {
+                return;
+            }
+
+
+            this._workerLocked = true;
+            this._worker.postMessage({
+                action: 'update',
+                deltaTime: this._elapsedTime,
+                avoid
+            });
+        }
+        else {
+            this._flocking.update(frameTime, avoid);
+            this._updated(this._flocking.getData());
+        }
     }
 
     _updated(data) {
