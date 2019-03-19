@@ -27,12 +27,14 @@ import causticsCode from './caustics.glsl';
 Shader.import(waterplaneCode);
 Shader.import(causticsCode);
 
-const stats = new Stats();
-stats.domElement.style.position = 'absolute';
-stats.domElement.style.left = '0';
-stats.domElement.style.top = '0';
-document.body.appendChild(stats.domElement);
-stats.begin();
+const stats = typeof Stats !== 'undefined' && new Stats();
+if (stats) {
+    stats.domElement.style.position = 'absolute';
+    stats.domElement.style.left = '0';
+    stats.domElement.style.top = '0';
+    document.body.appendChild(stats.domElement);
+    stats.begin();
+}
 
 const causticsShader = new Shader(
     Shader.source('caustics.vertex'),
@@ -227,8 +229,8 @@ application.create(canvas, {
     },
 
     loop(app) {
-        stats.end();
-        stats.begin();
+        stats && stats.end();
+        stats && stats.begin();
 
         const lightViewMatrix = this._light.worldTransform.clone().invert();
 
